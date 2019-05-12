@@ -270,9 +270,27 @@ set (CDS_SRC_LIST
 )
 
 set (FRCTL_SRC_LIST
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/iscsid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/auth.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/digest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/ua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/md5.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/tio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/config.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/sdfsio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/sha1.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/conn.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/chap.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/session.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/target_disk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/iscsi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/param.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/target.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/volume.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/debug.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/iet/cmds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/main.c
 )
-
 
 add_executable(sdfs.mdctl ${MDS_SRC_LIST})
 target_link_libraries(sdfs.mdctl ${CMAKE_C_LIBS} hiredis)

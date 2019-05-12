@@ -3,260 +3,330 @@
  *
  * Released under the terms of the GNU GPL v2.0.
  */
+#include <stdlib.h>
 
-#include <linux/file.h>
-#include <linux/ip.h>
-#include <net/tcp.h>
-#include <scsi/scsi.h>
+#define DBG_SUBSYS      S_YISCSI
 
 #include "iscsi.h"
-#include "iscsi_dbg.h"
-#include "digest.h"
+#include "dbg.h"
 
-static void print_conn_state(char *p, size_t size, unsigned long state)
+#if ENABLE_ISCSI_MEM
+static int mem_mcache_init(struct iscsi_conn *conn)
 {
-	if (test_bit(CONN_ACTIVE, &state))
-		snprintf(p, size, "%s", "active");
-	else if (test_bit(CONN_CLOSING, &state))
-		snprintf(p, size, "%s", "closing");
-	else
-		snprintf(p, size, "%s", "unknown");
+        int ret, i;
+        struct iscsi_mem_cache **mem_cache = conn->mem_cache;
+        static struct mem_mcache_param {
+                char *name;
+                u32 unit_size;
+                u32 base_nr;
+                u8 align;
+        } mem_mcache_params[ISCSI_MEM_CACHE_NR] = {
+                /*    name       |          size          | base_nr | align */
+                /*
+                { "target_cache", sizeof(struct iscsi_target),     8,  0, },
+                { "volume_cache", sizeof(struct iscsi_volume),     8,  0, },
+                { "conn_cache",   sizeof(struct iscsi_conn),       8,  0, },
+                { "sess_cache",   sizeof(struct iscsi_session),    8,  0, },
+                */
+                { "cmd_cache",    sizeof(struct iscsi_cmd),        64, 0, },
+                { "tio_cache",    sizeof(struct iscsi_tio),        64, 0, },
+        };
+
+        for (i = 0; i < ISCSI_MEM_CACHE_NR; ++i) {
+                mem_cache[i] =
+                        iscsi_mem_mcache_create(mem_mcache_params[i].name,
+                                                mem_mcache_params[i].unit_size,
+                                                mem_mcache_params[i].base_nr,
+                                                mem_mcache_params[i].align);
+                if (!mem_cache[i]) {
+                        ret = ENOMEM;
+                        GOTO(err_ret, ret);
+                }
+        }
+
+        return 0;
+err_ret:
+        for (--i; i >= 0; --i)
+                iscsi_mem_mcache_destroy(mem_cache[i]);
+        return ret;
 }
 
-static void print_digest_state(char *p, size_t size, unsigned long flags)
+static int mem_mcache_destory(struct iscsi_conn *conn)
 {
-	if (DIGEST_NONE & flags)
-		snprintf(p, size, "%s", "none");
-	else if (DIGEST_CRC32C & flags)
-		snprintf(p, size, "%s", "crc32c");
-	else
-		snprintf(p, size, "%s", "unknown");
+        int i;
+        struct iscsi_mem_cache **mem_cache = conn->mem_cache;
+
+        for (i = 0; i < ISCSI_MEM_CACHE_NR; ++i) {
+                iscsi_mem_mcache_destroy(mem_cache[i]);
+        }
+
+        return 0;
+}
+#endif
+
+struct iscsi_conn *__conn_find(struct iscsi_session *sess, u16 cid)
+{
+        struct iscsi_conn *conn;
+
+        list_for_each_entry(conn, &sess->conn_list, entry) {
+                if (conn->cid == cid)
+                        return conn;
+        }
+
+        return NULL;
 }
 
-void conn_info_show(struct seq_file *seq, struct iscsi_session *session)
+struct iscsi_conn *conn_find(struct iscsi_session *sess, u16 cid)
 {
-	struct iscsi_conn *conn;
-	struct sock *sk;
-	char buf[64];
+        struct iscsi_conn *conn;
 
-	list_for_each_entry(conn, &session->conn_list, list) {
-		sk = conn->sock->sk;
-		switch (sk->sk_family) {
-		case AF_INET:
-			snprintf(buf, sizeof(buf),
-				 "%u.%u.%u.%u", NIPQUAD(inet_sk(sk)->inet_daddr));
-			break;
-		case AF_INET6:
-			snprintf(buf, sizeof(buf), "[%pI6]",
-				 &inet6_sk(sk)->daddr);
-			break;
-		default:
-			break;
-		}
-		seq_printf(seq, "\t\tcid:%u ip:%s ", conn->cid, buf);
-		print_conn_state(buf, sizeof(buf), conn->state);
-		seq_printf(seq, "state:%s ", buf);
-		print_digest_state(buf, sizeof(buf), conn->hdigest_type);
-		seq_printf(seq, "hd:%s ", buf);
-		print_digest_state(buf, sizeof(buf), conn->ddigest_type);
-		seq_printf(seq, "dd:%s\n", buf);
-	}
+        pthread_spin_lock(&sess->conn_lock);
+        conn = __conn_find(sess, cid);
+        pthread_spin_unlock(&sess->conn_lock);
+
+        return conn;
 }
 
-struct iscsi_conn *conn_lookup(struct iscsi_session *session, u16 cid)
+int conn_add(struct iscsi_session *sess, struct iscsi_conn *conn)
 {
-	struct iscsi_conn *conn;
+        int ret;
+        struct iscsi_conn *old_conn;
 
-	list_for_each_entry(conn, &session->conn_list, list) {
-		if (conn->cid == cid)
-			return conn;
-	}
-	return NULL;
+        pthread_spin_lock(&sess->conn_lock);
+        old_conn = __conn_find(sess, conn->cid);
+        if (old_conn) {
+#ifdef USE_CORENET
+                UNIMPLEMENTED(__WARN__);
+                if (1) {
+                        ret = EAGAIN;
+                        GOTO(err_lock, ret);
+                }
+#else
+                if (!old_conn->vm) {
+                        ret = EAGAIN;
+                        GOTO(err_lock, ret);
+                }
+
+                DWARN("conn found, sid:%lX, cid:%d vm:%d\n", sess->sid.id64, conn->cid, old_conn->vm->idx);
+                vm_stop(old_conn->vm);
+#endif
+        }
+
+        list_add_tail(&conn->entry, &sess->conn_list);
+
+        if (sess->target) {
+                DINFO("vol "CHKID_FORMAT" sess %ju conn %s:%d count %d\n",
+                      CHKID_ARG(&sess->target->fileid),
+                      sess->sid.id64,
+                      _inet_ntop((struct sockaddr *)&conn->peer),
+                      ntohs(conn->peer.sin_port),
+                      list_size(&sess->conn_list));
+        }
+
+        pthread_spin_unlock(&sess->conn_lock);
+
+        return 0;
+err_lock:
+        pthread_spin_unlock(&sess->conn_lock);
+        return ret;
 }
 
-static void iet_state_change(struct sock *sk)
+int conn_empty(struct iscsi_session *sess)
 {
-	struct iscsi_conn *conn = sk->sk_user_data;
-	struct iscsi_target *target = conn->session->target;
+        int ret;
 
-	if (sk->sk_state != TCP_ESTABLISHED)
-		conn_close(conn);
-	else
-		nthread_wakeup(target);
+        pthread_spin_lock(&sess->conn_lock);
+        ret = list_empty(&sess->conn_list);
+        pthread_spin_unlock(&sess->conn_lock);
 
-	target->nthread_info.old_state_change(sk);
+        return ret;
 }
 
-static void iet_data_ready(struct sock *sk, int len)
+int conn_alloc(struct iscsi_conn **pptr)
 {
-	struct iscsi_conn *conn = sk->sk_user_data;
-	struct iscsi_target *target = conn->session->target;
+        int ret;
+        struct iscsi_conn *conn;
 
-	nthread_wakeup(target);
-	target->nthread_info.old_data_ready(sk, len);
+        /*
+        conn = iscsi_mem_mcache_calloc(g_mem_cache[ISCSI_MEM_CACHE_CONN], 0);
+        if (!conn) {
+                ret = ENOMEM;
+                GOTO(err_ret, ret);
+        }
+        */
+        ret = ymalloc((void **)&conn, sizeof(struct iscsi_conn));
+        if(ret)
+                GOTO(err_ret, ret);
+
+        conn->state = STATE_FREE;
+
+        atomic_set(&conn->nr_cmds, 0);
+        //atomic_set(&conn->nr_busy_cmds, 0);
+
+        conn->hdigest_type |= DIGEST_NONE;
+        conn->ddigest_type |= DIGEST_NONE;
+
+        conn->in_check = 0;
+        conn->waiting_free = 0;
+        conn->close_time = 0;
+        conn->ltime = gettime();
+
+#if ENABLE_ISCSI_MEM
+        mem_mcache_init(conn);
+#endif
+
+        param_set_defaults(conn->session_param, session_keys);
+
+        INIT_LIST_HEAD(&conn->entry);
+        INIT_LIST_HEAD(&conn->cmd_list);
+        INIT_LIST_HEAD(&conn->param_list);
+        INIT_LIST_HEAD(&conn->write_list);
+
+        DINFO("connection alloced: %p\n", conn);
+
+        *pptr = conn;
+
+        return 0;
+err_ret:
+        return ret;
 }
 
-/*
- * @locking: grabs the target's nthread_lock to protect it from races with
- * set_conn_wspace_wait()
- */
-static void iet_write_space(struct sock *sk)
+static void conn_free(struct iscsi_conn *conn)
 {
-	struct iscsi_conn *conn = sk->sk_user_data;
-	struct network_thread_info *info = &conn->session->target->nthread_info;
+        time_t used;
+        struct iscsi_session *sess;
+        struct iscsi_cmd *cmd, *tmp;
 
-	spin_lock_bh(&info->nthread_lock);
+        DINFO("free connection %p from %s:%d\n",
+              conn, _inet_ntop((struct sockaddr *)&conn->peer), ntohs(conn->peer.sin_port));
 
-	if (sk_stream_wspace(sk) >= sk_stream_min_wspace(sk) &&
-	    test_bit(CONN_WSPACE_WAIT, &conn->state)) {
-		clear_bit(CONN_WSPACE_WAIT, &conn->state);
-		__nthread_wakeup(info);
-	}
+        used = gettime() - conn->close_time;
+        if (used > 5) {
+                DERROR("conn_free used %u\n", (uint32_t)used);
+        }
 
-	spin_unlock_bh(&info->nthread_lock);
+        list_for_each_entry_safe(cmd, tmp, &conn->cmd_list, conn_entry) {
+                list_del_init(&cmd->entry);
+                iscsi_cmd_release(cmd, 1);
+        }
 
-	info->old_write_space(sk);
+        if (atomic_read(&conn->nr_cmds)) {
+                DERROR("BUG: still have cmds !!!\n");
+                UNIMPLEMENTED(__DUMP__);
+        }
+
+        /* Unlink from session */
+        list_del_init(&conn->entry);    /*may be done twice.*/
+
+        sess = conn->session;
+
+        if (sess && sess->target) {
+                DINFO("vol "CHKID_FORMAT" sess %ju conn %s:%d count %d\n",
+                      CHKID_ARG(&sess->target->fileid),
+                      sess->sid.id64,
+                      _inet_ntop((struct sockaddr *)&conn->peer),
+                      ntohs(conn->peer.sin_port),
+                      list_size(&sess->conn_list));
+        }
+
+        if (sess && conn_empty(sess))
+                session_free(sess);
+
+        YASSERT(conn->state == STATE_CLOSE);
+        YASSERT(list_empty(&conn->param_list));
+        YASSERT(list_empty(&conn->entry));
+
+        free(conn->auth.chap.challenge);
+        free(conn->initiator);
+        //iscsi_mem_mcache_free(g_mem_cache[ISCSI_MEM_CACHE_CONN], conn);
+#if ENABLE_ISCSI_MEM
+        mem_mcache_destory(conn);
+#endif
+
+        yfree((void **)&conn);
 }
 
-static void iet_socket_bind(struct iscsi_conn *conn)
+void conn_busy_get(struct iscsi_conn *conn)
 {
-	int opt = 1;
-	mm_segment_t oldfs;
-	struct iscsi_session *session = conn->session;
-	struct iscsi_target *target = session->target;
-
-	dprintk(D_GENERIC, "%llu\n", (unsigned long long) session->sid);
-
-	conn->sock = SOCKET_I(conn->file->f_dentry->d_inode);
-	conn->sock->sk->sk_user_data = conn;
-
-	write_lock_bh(&conn->sock->sk->sk_callback_lock);
-	target->nthread_info.old_state_change = conn->sock->sk->sk_state_change;
-	conn->sock->sk->sk_state_change = iet_state_change;
-
-	target->nthread_info.old_data_ready = conn->sock->sk->sk_data_ready;
-	conn->sock->sk->sk_data_ready = iet_data_ready;
-
-	target->nthread_info.old_write_space = conn->sock->sk->sk_write_space;
-	conn->sock->sk->sk_write_space = iet_write_space;
-	write_unlock_bh(&conn->sock->sk->sk_callback_lock);
-
-	oldfs = get_fs();
-	set_fs(get_ds());
-	conn->sock->ops->setsockopt(conn->sock, SOL_TCP, TCP_NODELAY, (void *)&opt, sizeof(opt));
-	set_fs(oldfs);
+        //atomic_inc(&conn->nr_busy_cmds);
+        atomic_inc(&conn->nr_cmds);
 }
 
-int conn_free(struct iscsi_conn *conn)
+int conn_busy_put(struct iscsi_conn *conn)
 {
-	dprintk(D_GENERIC, "%p %#Lx %u\n", conn->session,
-		(unsigned long long) conn->session->sid, conn->cid);
+        //if (atomic_dec_and_test(&conn->nr_busy_cmds) && conn->waiting_free && conn->in_check == 0) {
+        if (atomic_dec_and_test(&conn->nr_cmds) && conn->waiting_free && conn->in_check == 0) {
+                conn_free(conn);
+                return 1;
+        }
 
-	assert(atomic_read(&conn->nr_cmnds) == 0);
-	assert(list_empty(&conn->pdu_list));
-	assert(list_empty(&conn->write_list));
-
-	list_del(&conn->list);
-	list_del(&conn->poll_list);
-
-	del_timer_sync(&conn->nop_timer);
-	digest_cleanup(conn);
-	kfree(conn);
-
-	return 0;
+        return 0;
 }
 
-static int iet_conn_alloc(struct iscsi_session *session, struct conn_info *info)
+void conn_busy_tryfree(struct iscsi_conn *conn)
 {
-	struct iscsi_conn *conn;
-
-	dprintk(D_SETUP, "%#Lx:%u\n", (unsigned long long) session->sid, info->cid);
-
-	conn = kzalloc(sizeof(*conn), GFP_KERNEL);
-	if (!conn)
-		return -ENOMEM;
-
-	conn->session = session;
-	conn->cid = info->cid;
-	conn->stat_sn = info->stat_sn;
-	conn->exp_stat_sn = info->exp_stat_sn;
-
-	conn->hdigest_type = info->header_digest;
-	conn->ddigest_type = info->data_digest;
-	if (digest_init(conn) < 0) {
-		kfree(conn);
-		return -ENOMEM;
-	}
-
-	spin_lock_init(&conn->list_lock);
-	atomic_set(&conn->nr_cmnds, 0);
-	atomic_set(&conn->nr_busy_cmnds, 0);
-	INIT_LIST_HEAD(&conn->pdu_list);
-	INIT_LIST_HEAD(&conn->write_list);
-	INIT_LIST_HEAD(&conn->poll_list);
-	init_timer(&conn->nop_timer);
-
-	list_add(&conn->list, &session->conn_list);
-
-	set_bit(CONN_ACTIVE, &conn->state);
-
-	conn->file = fget(info->fd);
-	iet_socket_bind(conn);
-
-	list_add(&conn->poll_list, &session->target->nthread_info.active_conns);
-
-	nthread_wakeup(conn->session->target);
-
-	return 0;
+        //if (atomic_read(&conn->nr_busy_cmds) == 0 && conn->waiting_free) {
+        if (atomic_read(&conn->nr_cmds) == 0 && conn->waiting_free) {
+                conn_free(conn);
+                return;
+        }
 }
 
 void conn_close(struct iscsi_conn *conn)
 {
-	struct iscsi_cmnd *cmnd;
-	struct iscsi_session *session = conn->session;
+        struct iscsi_cmd *cmd;
 
-	if (test_and_clear_bit(CONN_ACTIVE, &conn->state))
-		set_bit(CONN_CLOSING, &conn->state);
+        /*
+         * Set all commands to abort state
+         */
+        list_for_each_entry(cmd, &conn->cmd_list, conn_entry) {
+                cmd->flags |= CMD_FLG_TMF_ABORT;
+        }
 
-	spin_lock(&conn->list_lock);
-	list_for_each_entry(cmnd, &conn->pdu_list, conn_list) {
-		set_cmnd_tmfabort(cmnd);
-		if (cmnd->lun) {
-			ua_establish_for_session(session, cmnd->lun->lun, 0x47, 0x7f);
-			iscsi_cmnd_set_sense(cmnd, UNIT_ATTENTION, 0x6e, 0x0);
-		}
-	}
-	spin_unlock(&conn->list_lock);
+        DINFO("close connection from %s:%d " "conn close: cmds(%u), busy_cmds(%u)\n",
+                        _inet_ntop((struct sockaddr *)&conn->peer), ntohs(conn->peer.sin_port),
+              (u32)atomic_read(&conn->nr_cmds),
+              (u32)atomic_read(&conn->nr_cmds));
 
-	nthread_wakeup(conn->session->target);
+        /*
+         * Check and free the connection
+         */
+        //close(conn->conn_fd);
+
+        conn->waiting_free = 1;
+        conn->close_time = gettime();
+
+        //if (atomic_read(&conn->nr_busy_cmds)) {
+        if (atomic_read(&conn->nr_cmds)) {
+                /*
+                 * Must wait for all the jobs handled by thread finish, can't free the
+                 * connection before this.
+                 */
+                DWARN("wanting thread's job done: nr(%u)\n",
+                     //atomic_read(&conn->nr_busy_cmds));
+                     atomic_read(&conn->nr_cmds));
+        } else if (conn->in_check) {
+                /*
+                 * Must wait for iscsi_check finish, can't free the
+                 * connection before this.
+                 */
+                DWARN("wanting iscsi_check done\n");
+        } else {
+                DBUG("there is no busy cmd to wait, free now\n");
+                conn_free(conn);
+                return;
+        }
 }
 
-int conn_add(struct iscsi_session *session, struct conn_info *info)
+void conn_update_stat_sn(struct iscsi_cmd *cmd)
 {
-	struct iscsi_conn *conn;
-	int err;
+        struct iscsi_conn *conn = cmd->conn;
+        u32 exp_stat_sn;
 
-	conn = conn_lookup(session, info->cid);
-	if (conn)
-		conn_close(conn);
+        exp_stat_sn = be32_to_cpu(cmd->pdu.bhs.exp_sn);
 
-	err = iet_conn_alloc(session, info);
-	if (!err && conn)
-		err = -EEXIST;
-
-	return err;
-}
-
-int conn_del(struct iscsi_session *session, struct conn_info *info)
-{
-	struct iscsi_conn *conn;
-	int err = -EEXIST;
-
-	conn = conn_lookup(session, info->cid);
-	if (!conn)
-		return err;
-
-	conn_close(conn);
-
-	return 0;
+        if ((int)(exp_stat_sn - conn->exp_stat_sn) > 0 &&
+            (int)(exp_stat_sn - conn->stat_sn) <= 0) {
+                conn->exp_stat_sn = exp_stat_sn;
+        }
 }

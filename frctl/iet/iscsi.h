@@ -1,524 +1,968 @@
-/*
- * Copyright (C) 2002-2003 Ardis Technolgies <roman@ardistech.com>
- * Copyright (C) 2008 Arne Redlich <agr@powerkom-dd.de>
- *
- * Released under the terms of the GNU GPL v2.0.
+#ifndef ISCSI_H
+#define ISCSI_H
+
+#include <sys/socket.h>
+#include <netdb.h>
+
+#include "types.h"
+#include "misc.h"
+#include "mem_cache.h"
+#include "cache.h"
+#include "sdfs_lib.h"
+#include "iscsi_hdr.h"
+#include "sdfs_list.h"
+#include "atomic.h"
+#include "sdfs_buffer.h"
+#include "iscsi_config.h"
+#include "volume.h"
+#include "ynet_rpc.h"
+
+#define LICHIO_RESET            1
+#define USE_CORENET             1
+
+#define YISCSI_VERSION_STRING   "0.1"
+
+#define ISCSI_NR_EPOLL_FD       4096
+#define ISCSI_NR_EPOLL_EV       128
+#define ISCSI_NR_LISTEN_QUEUE   128
+
+#define VENDOR_ID               "MDS"
+#define PRODUCT_ID              "LICH-DISK"
+#define PRODUCT_REV             "0"
+#define CONFIRM_INTERVAL 20
+
+#define ISCSI_IEEE_VEN_ID       0x60223344
+/**
+ * Memory cache
  */
 
-#ifndef __ISCSI_H__
-#define __ISCSI_H__
+#define ISCSI_MEM_CACHE_TARGET          0
+#define ISCSI_MEM_CACHE_VOLUME          1
+#define ISCSI_MEM_CACHE_CONN            2
+#define ISCSI_MEM_CACHE_SESSION         3
 
-#include <linux/blkdev.h>
-#include <linux/completion.h>
-#include <linux/pagemap.h>
-#include <linux/seq_file.h>
-#include <linux/mm.h>
-#include <linux/crypto.h>
-#include <linux/scatterlist.h>
-#include <net/sock.h>
+#define ISCSI_MEM_CACHE_CMD             0
+#define ISCSI_MEM_CACHE_TIO             1
+#define ISCSI_MEM_CACHE_NR              2
 
-#include "iscsi_hdr.h"
-#include "iet_u.h"
-#include "compat.h"
+#define MAX_QUEUE_CMD_MIN        1
+#define MAX_QUEUE_CMD_DEF        128
+#define MAX_QUEUE_CMD_MAX        512
 
-#define IET_SENSE_BUF_SIZE      18
+extern struct iscsi_mem_cache *g_mem_cache[ISCSI_MEM_CACHE_NR];
+
+/**
+ * Parameter
+ */
+
+#define DIGEST_ALL              (DIGEST_NONE | DIGEST_CRC32C)
+#define DIGEST_NONE             (1 << 0)
+#define DIGEST_CRC32C           (1 << 1)
+
+enum {
+        key_initial_r2t,
+        key_immediate_data,
+        key_max_connections,
+        key_max_recv_data_length,
+        key_max_xmit_data_length,
+        key_max_burst_length,
+        key_first_burst_length,
+        key_default_wait_time,
+        key_default_retain_time,
+        key_max_outstanding_r2t,
+        key_data_pdu_inorder,
+        key_data_sequence_inorder,
+        key_error_recovery_level,
+        key_header_digest,
+        key_data_digest,
+        key_ofmarker,
+        key_ifmarker,
+        key_ofmarkint,
+        key_ifmarkint,
+
+        /* iSCSI Extensions for RDMA (RFC5046) */
+        key_rdma_extensions,
+        key_target_recv_data_length,
+        key_initiator_recv_data_length,
+        key_max_outstanding_unexpected_pdus,
+
+        /* must always be last */
+        session_key_last,
+};
 
 struct iscsi_sess_param {
-	int initial_r2t;
-	int immediate_data;
-	int max_connections;
-	int max_recv_data_length;
-	int max_xmit_data_length;
-	int max_burst_length;
-	int first_burst_length;
-	int default_wait_time;
-	int default_retain_time;
-	int max_outstanding_r2t;
-	int data_pdu_inorder;
-	int data_sequence_inorder;
-	int error_recovery_level;
-	int header_digest;
-	int data_digest;
-	int ofmarker;
-	int ifmarker;
-	int ofmarkint;
-	int ifmarkint;
+        int initial_r2t;
+        int immediate_data;
+        int max_connections;
+        u32 max_recv_data_length;
+        u32 max_xmit_data_length;
+        int max_burst_length;
+        u32 first_burst_length;
+        int default_wait_time;
+        int default_retain_time;
+        u32 max_outstanding_r2t;
+        int data_pdu_inorder;
+        int data_sequence_inorder;
+        int error_recovery_level;
+        int header_digest;
+        int data_digest;
+        int ofmarker;
+        int ifmarker;
+        int ofmarkint;
+        int ifmarkint;
+        int rdma_extensions;
+        int target_recv_data_length;
+        int initiator_recv_data_length;
+        int max_outstanding_unexpected_pdus;
 };
+
+#define DEFAULT_NR_QUEUED_CMDS          32
+#define MIN_NR_QUEUED_CMDS              1
+#define MAX_NR_QUEUED_CMDS              256
+
+#define ISCSI_TARGET_TYPE_DISK          0
+#define ISCSI_TARGET_TYPE_NR_MAX        1
 
 struct iscsi_trgt_param {
-	int wthreads;
-	int target_type;
-	int queued_cmnds;
-	int nop_interval;
-	int nop_timeout;
+        int target_type;
+        int queued_cmds;
 };
 
-struct tio {
-	u32 pg_cnt;
-
-	pgoff_t idx;
-	u32 offset;
-	u32 size;
-
-	struct page **pvec;
-
-	atomic_t count;
+struct iscsi_param {
+        int state;
+        unsigned int val;
 };
 
-struct network_thread_info {
-	struct task_struct *task;
-	unsigned long flags;
-	struct list_head active_conns;
-
-	spinlock_t nthread_lock;
-
-	void (*old_state_change)(struct sock *);
-	void (*old_data_ready)(struct sock *, int);
-	void (*old_write_space)(struct sock *);
+struct iscsi_param_node {
+        struct list_head entry;
+        char *key;
+        char *val;
 };
 
-struct worker_thread_info;
+/**
+ * tio
+ */
+struct iscsi_tio {
+        /* Use for Read/Write */
+        u64 io_off;
+        u64 io_len;
 
-struct worker_thread {
-	struct task_struct *w_task;
-	struct list_head w_list;
-	struct worker_thread_info *w_info;
+        buffer_t buffer;
+
+        int count;
+        struct iscsi_tio *next_tio; 
 };
 
-struct worker_thread_info {
-	spinlock_t wthread_lock;
+/**
+ * Key
+ */
 
-	u32 nr_running_wthreads;
+#define KEY_STATE_START         0
+#define KEY_STATE_REQUEST       1
+#define KEY_STATE_DONE          2
 
-	struct list_head wthread_list;
-	struct list_head work_queue;
+struct iscsi_key;
 
-	wait_queue_head_t wthread_sleep;
-
-	struct io_context *wthread_ioc;
+struct iscsi_key_ops {
+        int (*val_to_str)(unsigned int, char *);
+        int (*str_to_val)(char *, unsigned int *);
+        int (*check_val)(struct iscsi_key *, unsigned int *);
+        int (*set_val)(struct iscsi_param *, int, unsigned int *);
 };
 
-struct iscsi_cmnd;
-
-struct target_type {
-	int id;
-	int (*execute_cmnd) (struct iscsi_cmnd *);
+struct iscsi_key {
+        char *name;
+        unsigned int def;
+        unsigned int min;
+        unsigned int max;
+        struct iscsi_key_ops *ops;
+        unsigned int mask;
 };
 
-enum iscsi_device_state {
-	IDEV_RUNNING,
-	IDEV_DEL,
+extern struct iscsi_key session_keys[];
+extern struct iscsi_key target_keys[];
+
+/**
+ * command
+ */
+
+#define cmd_opcode(cmd)         ((cmd)->pdu.bhs.opcode & ISCSI_OPCODE_MASK)
+#define cmd_itt(cmd)            cpu_to_be32((cmd)->pdu.bhs.itt)
+#define cmd_ttt(cmd)            cpu_to_be32((cmd)->pdu.bhs.ttt)
+#define cmd_immediate(cmd)      ((cmd)->pdu.bhs.opcode & ISCSI_OP_IMMEDIATE)
+#define cmd_scsi_hdr(cmd)       ((struct iscsi_scsi_cmd_hdr *)(&((cmd)->pdu.bhs)))
+#define cmd_scsicode(cmd)       cmd_scsi_hdr(cmd)->scb[0]
+
+struct iscsi_pdu {
+        struct iscsi_hdr bhs;
+        void *ahs;
+        u32 ahssize;
+        u32 datasize;
+};
+
+#define ISCSI_SENSE_BUF_SIZE    18
+
+/**
+ * COMMAND FLAGS
+ */
+
+#define CMD_FLG_HASHED          0x0001
+#define CMD_FLG_QUEUED          0x0002
+#define CMD_FLG_FINAL           0x0004
+#define CMD_FLG_WAITIO          0x0008
+#define CMD_FLG_CLOSE           0x0010
+#define CMD_FLG_CLOSE_SESSION   0x0020
+#define CMD_FLG_LUNIT           0x0040
+#define CMD_FLG_PENDING         0x0080
+#define CMD_FLG_TMF_ABORT       0x0100
+#define CMD_FLG_RX_START        0x0200
+
+typedef struct {
+        fileid_t fileid;
+        void *vm;
+} lichbd_ioctx_t;
+
+
+struct iscsi_cmd {
+        struct list_head entry;
+        struct list_head conn_entry;
+
+        unsigned long flags;
+
+        /**
+         * For any ISCSI request issued over a TCP connection, the corresponding
+         * response and/or other related PDU(s)  MUST  be  send  over  the  same
+         * connection, this called "connection allegiance" - RFC3720
+         */
+        struct iscsi_conn *conn;
+        struct iscsi_volume *lun;
+
+        struct iscsi_pdu pdu;
+
+        /**
+         * List used to link the request cmd and all the corresponding
+         * response cmds.
+         */
+        struct list_head rsp_list;
+
+        struct list_head hash_entry;
+
+        time_t time;
+        /**
+         * Used for aio
+         */
+
+        lichbd_ioctx_t *ioctx;
+
+        struct iscsi_tio *tio;
+        //int err;
+        uint32_t retry;
+        int (*callback)(struct iscsi_cmd *self);
+
+        u8 status;
+
+        u32 r2t_sn;
+        u32 r2t_length;
+        u32 exp_offset;
+        u32 is_unsolicited_data;
+        u32 target_task_tag;
+        u32 outstanding_r2t;
+
+        u32 hdigest;
+        u32 ddigest;
+
+        struct iscsi_cmd *req;
+
+        unsigned char sense_buf[ISCSI_SENSE_BUF_SIZE];
+        int sense_len;
+};
+
+/**
+ * Target
+ */
+
+/**
+ * Initiators and targets MUST support the receipt of ISCSI name of up to the
+ * maximum length of 223 bytes - RFC3720.
+ */
+#define RESERVE_TID             0
+#define TARGET_MAX_LUNS         256
+
+enum iscsi_target_state {
+        ITGT_RUNNING,
+        ITGT_DEL,
 };
 
 struct iscsi_target {
-	struct list_head t_list;
-	u32 tid;
+        struct list_head entry;
+        u32 tid;
+        uint32_t loaded;
+        uint8_t         vaai_enabled;
+        uint8_t         thin_provisioning;
+        char name[ISCSI_IQN_NAME_MAX];
+        char pool[MAX_NAME_LEN];
+        char path[MAX_NAME_LEN];
+        fileid_t fileid;        /* The fileid of target directory in sdfs */
 
-	char name[ISCSI_NAME_LEN];
+        enum iscsi_target_state stat;
 
-	struct iscsi_sess_param sess_param;
-	struct iscsi_trgt_param trgt_param;
+        struct redirect_addr {
+                char addr[NI_MAXHOST + 1];
+                char port[NI_MAXSERV + 1];
+                u8 type;
+        } redirect;
 
-	atomic_t nr_volumes;
-	struct list_head volumes;
-	struct list_head session_list;
+        time_t confirm;
+        time_t last_scan;
+        time_t ctime;
 
-	/* Prevents races between add/del session and adding UAs */
-	spinlock_t session_list_lock;
+        struct iscsi_sess_param sess_param;
+        struct iscsi_trgt_param trgt_param;
 
-	struct network_thread_info nthread_info;
-	/* Points either to own list or global pool */
-	struct worker_thread_info * wthread_info;
+        atomic_t nr_volumes;
+        struct list_head volume_list;
+#if ENABLE_ISCSI_CACHE_REUSE
+        mcache_entry_t *volume_entrys[TARGET_MAX_LUNS];
+#endif
 
-	struct semaphore target_sem;
+        volume_t *volume;
+        lichbd_ioctx_t ioctx;
+};
+
+/**
+ * IO Type
+ */
+
+struct iotype {
+        /**
+         * Allocate iotype's private data and point it by the volume's
+         * `priv' member, also initialize some volume's parameters.
+         */
+        int (*attach)(struct iscsi_volume *, void *);
+
+        /** Release the resources allocated in @attach */
+        int (*detach)(struct iscsi_volume *);
+
+        int (*update)(struct iscsi_volume *, void *);
+
+        /*
+         * IOType's aio interface, when this IO request is done,
+         * `cb' will be called.
+         */
+        int (*aio_read)(struct iscsi_cmd *);
+        int (*aio_write)(struct iscsi_cmd *);
+
+        /*
+        * Unload data chunks from sepcific volume.
+        */
+        int (*unmap)(struct iscsi_cmd *, uint64_t, uint32_t);
+
+        /**
+         * Flush the data described by `cmd->tio' to disk,
+         * sync all data if tio is NULL.
+         */
+        int (*sync)(struct iscsi_cmd *);
+};
+
+/**
+ * Logical Unit
+ */
+
+enum iscsi_device_state {
+        IDEV_RUNNING,
+        IDEV_DEL,
 };
 
 struct iscsi_queue {
-	spinlock_t queue_lock;
-	struct iscsi_cmnd *ordered_cmnd;
-	struct list_head wait_list;
-	int active_cnt;
+        struct iscsi_cmd *ordered_cmd;
+        struct list_head wait_list;
+        int active_cnt;
 };
 
-struct iet_volume {
-	u32 lun;
+#define LU_READONLY             0x00000001
+#define LU_WCACHE               0x00000002
+#define LU_RCACHE               0x00000004
+#define LU_VAAI_ENABLED         0x00000008
 
-	enum iscsi_device_state l_state;
-	atomic_t l_count;
+#define LUReadonly(lu)          ((lu)->flags & LU_READONLY)
+#define SetLUReadonly(lu)       ((lu)->flags |= LU_READONLY)
 
-	struct iscsi_target *target;
-	struct list_head list;
+#define LUWCache(lu)            ((lu)->flags & LU_WCACHE)
+#define SetLUWCache(lu)         ((lu)->flags |= LU_WCACHE)
+#define ClearLUWCache(lu)       ((lu)->flags & ~LU_WCACHE)
 
-	struct iscsi_queue queue;
+#define LURCache(lu)            ((lu)->flags & LU_RCACHE)
+#define SetLURCache(lu)         ((lu)->flags |= LU_RCACHE)
+#define ClearLURCache(lu)       ((lu)->flags & ~LU_RCACHE)
 
-	u8 scsi_id[SCSI_ID_LEN];
-	u8 scsi_sn[SCSI_SN_LEN + 1];
+#define LUVaai(lu)              ((lu)->flags & LU_VAAI_ENABLED)
+#define SetLUVaai(lu)           ((lu)->flags |= LU_VAAI_ENABLED)
 
-	u32 blk_shift;
-	u64 blk_cnt;
+#define SCSI_ID_LEN             16
+#define SCSI_SN_LEN             (SCSI_ID_LEN * 2)
 
-	u64 reserve_sid;
-	spinlock_t reserve_lock;
+struct iscsi_volume {
+        struct list_head entry;
+        struct iscsi_target *target;
 
-	unsigned long flags;
+        char tname[ISCSI_IQN_NAME_MAX];
+        u32 lun;
+        fileid_t fileid;
 
-	struct iotype *iotype;
-	void *private;
+        u32 flags;
+
+        enum iscsi_device_state stat;
+        atomic_t count;
+
+        struct iscsi_queue queue;
+
+        u8 scsi_id[SCSI_ID_LEN];
+        u8 scsi_sn[SCSI_SN_LEN + 1];
+
+        u32 blk_shift;
+        u64 blk_cnt;
+        u64 blk_size;
+
+        u64 reserve_sid;
+
+        time_t unavailable;
+        struct iotype *iotype;
+        void *private;
 };
 
-enum lu_flags {
-	LU_READONLY,
-	LU_WCACHE,
-	LU_RCACHE,
-};
+/**
+ * Session
+ */
 
-#define LUReadonly(lu) test_bit(LU_READONLY, &(lu)->flags)
-#define SetLUReadonly(lu) set_bit(LU_READONLY, &(lu)->flags)
+#define ISCSI_HASH_ORDER        8
+#define ISCSI_UA_HASH_LEN       8
 
-#define LUWCache(lu) test_bit(LU_WCACHE, &(lu)->flags)
-#define SetLUWCache(lu) set_bit(LU_WCACHE, &(lu)->flags)
-#define ClearLUWCache(lu) clear_bit(LU_WCACHE, &(lu)->flags)
+/* 2^31 + 2^29 - 2^25 + 2^22 - 2^19 - 2^16 + 1 */
+#define GOLDEN_RATIO_PRIME_32   0x9e370001UL
 
-#define LURCache(lu) test_bit(LU_RCACHE, &(lu)->flags)
-#define SetLURCache(lu) set_bit(LU_RCACHE, &(lu)->flags)
-#define ClearLURCache(lu) clear_bit(LU_RCACHE, &(lu)->flags)
+static inline u32 hash_long(u32 val, unsigned int bits)
+{
+        /* On some cpus multiply is faster, on others gcc will do shifts */
+        u32 hash = val * GOLDEN_RATIO_PRIME_32;
 
-#define IET_HASH_ORDER		8
-#define	cmnd_hashfn(itt)	hash_long((itt), IET_HASH_ORDER)
+        /* High bits are more random, so use them. */
+        return hash >> (32 - bits);
+}
+#define cmd_hashfn(itt)         (hash_long((itt), ISCSI_HASH_ORDER))
 
-#define UA_HASH_LEN 8
+#define SESSION_NORMAL          0
+#define SESSION_DISCOVERY       1
 
 struct iscsi_session {
-	struct list_head list;
-	struct iscsi_target *target;
-	struct completion *done;
-	char *initiator;
-	u64 sid;
+        struct list_head entry;
+        struct iscsi_target *target;
 
-	u32 exp_cmd_sn;
-	u32 max_cmd_sn;
+        u8 type;
+        union iscsi_sid sid;
 
-	struct iscsi_sess_param param;
-	u32 max_queued_cmnds;
+        char *initiator;
 
-	struct list_head conn_list;
+        u32 exp_cmd_sn;
+        u32 max_cmd_sn;
 
-	struct list_head pending_list;
+        struct iscsi_sess_param param;
 
-	spinlock_t cmnd_hash_lock;
-	struct list_head cmnd_hash[1 << IET_HASH_ORDER];
+        u32 max_queued_cmds;
 
-	spinlock_t ua_hash_lock;
-	struct list_head ua_hash[UA_HASH_LEN];
+        pthread_spinlock_t conn_lock;
+        struct list_head conn_list;
+        struct list_head pending_list;
 
-	u32 next_ttt;
+        struct list_head cmd_hash[1 << ISCSI_HASH_ORDER];
+
+        struct list_head ua_hash[ISCSI_UA_HASH_LEN];
+
+        u32 next_ttt;
+
+        /* links all tasks (task->c_hlist) */
+        struct list_head cmd_list;
+        /* links pending tasks (task->c_list) */
+        struct list_head pending_cmd_list;
+        /* if this session uses rdma connections */
+        int rdma;
 };
 
-enum connection_state_bit {
-	CONN_ACTIVE,
-	CONN_CLOSING,
-	CONN_WSPACE_WAIT,
-	CONN_NEED_NOP_IN,
-};
+/**
+ * AUTH
+ */
 
-#define ISCSI_CONN_IOV_MAX	(((256 << 10) >> PAGE_SHIFT) + 1)
+#define AUTH_UNKNOWN            -1
+#define AUTH_NONE               0
+#define AUTH_CHAP               1
+#define DIGEST_UNKNOWN          -1
+
+#define AUTH_DIR_INCOMING       0
+#define AUTH_DIR_OUTGOING       1
+
+/**
+ * Connection
+ */
+
+#define STATE_FREE              0
+#define STATE_SECURITY          1
+#define STATE_SECURITY_AUTH     2
+#define STATE_SECURITY_DONE     3
+#define STATE_SECURITY_LOGIN    4
+#define STATE_SECURITY_FULL     5
+#define STATE_LOGIN             6
+#define STATE_LOGIN_FULL        7
+#define STATE_FULL              8
+#define STATE_CLOSE             9
+#define STATE_EXIT              10
+#define STATE_CLOSED	 	11
+
+#define STATE_SCSI                12
+#define STATE_INIT                13
+#define STATE_START                14
+#define STATE_READY                15
+
+#define IOSTATE_FREE            0
+#define IOSTATE_READ_BHS        1
+#define IOSTATE_READ_AHS_DATA   2
+#define IOSTATE_WRITE_BHS       3
+#define IOSTATE_WRITE_AHS       4
+#define IOSTATE_WRITE_DATA      5
+
+#define AUTH_STATE_START        0
+
+#define ISCSI_CONN_IOV_MAX      8192
 
 struct iscsi_conn {
-	struct list_head list;			/* list entry in session list */
-	struct iscsi_session *session;		/* owning session */
+        struct list_head entry;
+        struct iscsi_session *session;
+#if ENABLE_ISCSI_MEM
+        struct iscsi_mem_cache *mem_cache[ISCSI_MEM_CACHE_NR];
+#endif
+        struct iscsi_target *target;
 
-	u16 cid;
-	unsigned long state;
+        u16 cid;
 
-	u32 stat_sn;
-	u32 exp_stat_sn;
+        u32 tid;
+        char tname[ISCSI_IQN_NAME_MAX];
+        union iscsi_sid sid;
+        char *initiator;
 
-	int hdigest_type;
-	int ddigest_type;
+        unsigned long state;
+#if 0
+        vm_t *vm;
+#endif
+        sockid_t sockid;
 
-	struct list_head poll_list;
+        u32 stat_sn;
+        u32 exp_stat_sn;
+        u32 cmd_sn;
+        u32 exp_cmd_sn;
+        u32 max_cmd_sn;
+        u32 ttt;
 
-	struct file *file;
-	struct socket *sock;
-	spinlock_t list_lock;
-	atomic_t nr_cmnds;
-	atomic_t nr_busy_cmnds;
-	struct list_head pdu_list;		/* in/outcoming pdus */
-	struct list_head write_list;		/* list of data pdus to be sent */
-	struct timer_list nop_timer;
+        int hdigest_type;
+        int ddigest_type;
 
-	struct iscsi_cmnd *read_cmnd;
-	struct msghdr read_msg;
-	struct iovec read_iov[ISCSI_CONN_IOV_MAX];
-	u32 read_size;
-	u32 read_overflow;
-	int read_state;
+        int conn_fd;
+        int login_state;
+        int closed;
+        buffer_t *buf;
+        struct sockaddr_in peer;
+        struct sockaddr_in self;
 
-	struct iscsi_cmnd *write_cmnd;
-	struct iovec write_iov[ISCSI_CONN_IOV_MAX];
-	struct iovec *write_iop;
-	struct tio *write_tcmnd;
-	u32 write_size;
-	u32 write_offset;
-	int write_state;
+        struct iscsi_param session_param[session_key_last];
 
-	struct hash_desc rx_hash;
-	struct hash_desc tx_hash;
-	struct scatterlist hash_sg[ISCSI_CONN_IOV_MAX];
-};
+        int session_type;
 
-struct iscsi_pdu {
-	struct iscsi_hdr bhs;
-	void *ahs;
-	unsigned int ahssize;
-	unsigned int datasize;
-};
+        int auth_method;
+        unsigned long auth_state;
+        union {
+                struct {
+                        int digest_alg;
+                        int id;
+                        int challenge_size;
+                        unsigned char *challenge;
+                } chap;
+        } auth;
+        char auth_username[MAX_NAME_LEN];
+        char auth_password[MAX_NAME_LEN];
 
-typedef void (iet_show_info_t)(struct seq_file *seq, struct iscsi_target *target);
+        /**
+         * Counter of request cmds and response cmds of this connection, increased
+         * when cmd create and decreased when cmd release.
+         */
+        atomic_t nr_cmds;
 
-struct iscsi_cmnd {
-	struct list_head list;
-	struct list_head conn_list;
-	unsigned long flags;
-	struct iscsi_conn *conn;
-	struct iet_volume *lun;
+        /**
+         * Counter of the cmds processing by thread, increased when a cmd insert
+         * into thread pool and decreased when thread finish it.
+         */
+        //atomic_t nr_busy_cmds;
 
-	struct iscsi_pdu pdu;
-	struct list_head pdu_list;
+        time_t close_time;
+        time_t ltime;
+        int waiting_free;
 
-	struct list_head hash_list;
+        /**
+         * @List of request commands
+         * the request cmds is inserted into this list by their @conn_entry member,
+         * note that the response cmds _NOT_ in this list, however,  they increase
+         * the @nr_cmds counter.
+         * (all the response cmds linked into the corresponding request cmds's @rsp_list)
+         */
+        struct list_head cmd_list;
 
-	struct tio *tio;
+        /**
+         * @List of response commands to be send
+         */
+        struct list_head write_list;
 
-	u8 status;
+        /**
+         * @List used for text negotiate
+         */
+        struct list_head param_list;
 
-	struct timer_list timer;
+        struct iscsi_cmd *read_cmd;
+        struct msghdr read_msg;
+        struct iovec read_iov[ISCSI_CONN_IOV_MAX];
+        u32 read_size;
+        u32 read_overflow;
+        int read_state;
 
-	u32 r2t_sn;
-	u32 r2t_length;
-	u32 is_unsolicited_data;
-	u32 target_task_tag;
-	u32 outstanding_r2t;
+        struct iscsi_cmd *write_cmd;
+        struct msghdr write_msg;
+        struct iovec write_iov[ISCSI_CONN_IOV_MAX];
+        char __align[4];
+        u32 write_size;
+        int write_state;
 
-	u32 hdigest;
-	u32 ddigest;
+        struct iscsi_tio *write_tio;
+        u32 write_tio_off;
+        u32 write_tio_size;
 
-	struct iscsi_cmnd *req;
+        int in_check;
 
-	unsigned char sense_buf[IET_SENSE_BUF_SIZE];
+        int refcount;
+        struct iscsi_transport *tp;
+        int rdma;
 };
 
 struct ua_entry {
-	struct list_head entry;
-	struct iscsi_session *session; /* only used for debugging ATM */
-	u32 lun;
-	u8 asc;
-	u8 ascq;
+        struct list_head entry;
+        struct iscsi_session *session; /* Only used for debugging ATM */
+        u32 lun;
+        u8 asc;
+        u8 ascq;
 };
 
-#define ISCSI_OP_SCSI_REJECT	ISCSI_OP_VENDOR1_CMD
-#define ISCSI_OP_PDU_REJECT	ISCSI_OP_VENDOR2_CMD
-#define ISCSI_OP_DATA_REJECT	ISCSI_OP_VENDOR3_CMD
-#define ISCSI_OP_SCSI_ABORT	ISCSI_OP_VENDOR4_CMD
+/**
+ * Command Hook
+ *
+ *   @req_op: request  opcode of command, -1 if none.
+ *   @rsp_op: response opcode of command, -1 if none.
+ * @rx_start: function be called just after the header receive complete and before
+ *            data receive.
+ *   @rx_end: function be called after data receive done. for the command before
+ *            session is established, execute it here directly; otherwise, the
+ *            function @iscsi_session_push_command should be called, and do the
+ *            real process in @cmd_exec
+ * @cmd_exec: see @rx_end
+ * @tx_start: set StatSN, ExpCmdSN, MaxCmdSN and other thing here.
+ *   @tx_end: command respective process.
+ */
+struct iscsi_cmd_hook {
+        char name[MAX_NAME_LEN];
+        char path[MAX_NAME_LEN];
+        int req_op, rsp_op;
+        int (*rx_start)(struct iscsi_cmd *);
+        int (*rx_end)(struct iscsi_cmd *);
+        int (*cmd_exec)(struct iscsi_cmd *);
+        int (*tx_start)(struct iscsi_cmd *);
+        int (*tx_end)(struct iscsi_cmd *);
+};
 
-/* iscsi.c */
-extern unsigned long worker_thread_pool_size;
-extern struct iscsi_cmnd *cmnd_alloc(struct iscsi_conn *, int);
-extern void cmnd_rx_start(struct iscsi_cmnd *);
-extern void cmnd_rx_end(struct iscsi_cmnd *);
-extern void cmnd_tx_start(struct iscsi_cmnd *);
-extern void cmnd_tx_end(struct iscsi_cmnd *);
-extern void cmnd_release(struct iscsi_cmnd *, int);
-extern void send_data_rsp(struct iscsi_cmnd *, void (*)(struct iscsi_cmnd *));
-extern void send_scsi_rsp(struct iscsi_cmnd *, void (*)(struct iscsi_cmnd *));
-extern void iscsi_cmnd_set_sense(struct iscsi_cmnd *, u8 sense_key, u8 asc,
-				 u8 ascq);
-extern void send_nop_in(struct iscsi_conn *);
+struct sdfs_tgt_entry {
+        struct list_head entry;
 
-/* conn.c */
-extern struct iscsi_conn *conn_lookup(struct iscsi_session *, u16);
-extern int conn_add(struct iscsi_session *, struct conn_info *);
-extern int conn_del(struct iscsi_session *, struct conn_info *);
-extern int conn_free(struct iscsi_conn *);
+        char iqn[ISCSI_IQN_NAME_MAX + 1];
+        char pool[MAX_NAME_LEN];
+        char path[MAX_PATH_LEN];
+        fileid_t fileid;
+
+        /*
+         * Uss may return errno EAGAIN when call raw_getattr() to a lun,
+         * in this case, we set this flag and judge whether discard this
+         * lun backwards.
+         */
+        int delay_check;
+};
+
+struct config_operations {
+        int (*init)(void);
+        int (*scan_target)(struct list_head *tgt_head, struct iscsi_conn *conn);
+        int (*free_target)(struct list_head *tgt_head);
+        int (*build_target)(const char *, struct sdfs_tgt_entry *);
+        int (*scan_lun)(struct iscsi_conn *conn);
+        int (*rescan_lun)(struct iscsi_conn *conn);
+        int (*scan_async)(void);
+        int (*account_query)(struct iscsi_conn *conn, int, char *, char *);
+};
+
+#define MAX_LVNAME MAX_NAME_LEN
+
+typedef struct {
+        //volumeid_t volid;
+        //uint64_t   msize;
+        fileid_t   fileid;
+        char       vname[MAX_LVNAME];   /* key */
+} lv_entry_t;
+
+struct sdfs_ns_entry {
+        struct list_head entry;
+
+        lv_entry_t ns;
+};
+
+struct load_tgt_entry {
+        struct list_head entry;
+        fileid_t oid;
+        char name[MAX_NAME_LEN];
+};
+
+struct sdfs_lun_entry {
+        struct list_head entry;
+
+        char path[MAX_PATH_LEN];
+        char pool[MAX_PATH_LEN];
+        fileid_t fileid;
+        uint32_t lun;
+
+        uint32_t blk_shift;
+        uint64_t blk_size;
+
+        /*
+         * Uss may return errno EAGAIN when call raw_getattr() to a lun,
+         * in this case, we set this flag and judge whether discard this
+         * lun backwards.
+         */
+        int delay_check;
+};
+
+/**
+ * config.c
+ */
+extern struct config_operations *cops;
+extern void sdfs_tgt_free(struct sdfs_tgt_entry *);
+extern void sdfs_lun_free(struct sdfs_lun_entry *);
+extern struct sdfs_tgt_entry *sdfs_tgt_find(struct list_head *, const char *, fileid_t *);
+extern struct sdfs_lun_entry *sdfs_lun_find(struct list_head *, uint32_t, fileid_t *);
+
+/**
+ * target.c
+ */
+extern void target_put(struct iscsi_target *);
+extern void target_del(struct iscsi_target *);
+extern int target_free(struct iscsi_target *target);
+extern int target_alloc_by_name(const char *name, struct iscsi_target **_tgt);
+extern void target_list_entry_build(struct iscsi_cmd *, char *);
+
+extern void target_add_lun_nolock(struct iscsi_target *, struct iscsi_volume *);
+extern void target_del_lun_nolock(struct iscsi_target *, struct iscsi_volume *);
+
+extern int target_lichbd_connect(struct iscsi_target *target);
+
+extern int target_redirect(int, struct iscsi_target *);
+extern int target_redirected(struct iscsi_conn *, struct iscsi_target *);
+
+extern int iser_target_redirect(struct iscsi_conn *, struct iscsi_target *);
+
+extern int target_islocal(struct iscsi_target *);
+extern int target_localize_confirm(struct iscsi_target *);
+
+extern int target_connect(struct iscsi_target *, const char *addr, int port);
+extern int target_disconnect(struct iscsi_target *, const char *addr, int port);
+
+/**
+ * worker.c
+ */
+extern int worker_thread_init(void);
+extern int worker_thread_queue(struct iscsi_cmd *);
+
+/**
+ * volume.c
+ */
+extern struct iscsi_volume *volume_get(struct iscsi_target *, u32);
+extern void volume_put(struct iscsi_volume *);
+extern void volume_del(struct iscsi_volume *);
+extern int volume_is_reserved(struct iscsi_volume *, u64);
+extern int volume_reserve(struct iscsi_volume *, u64);
+extern int volume_release(struct iscsi_volume *, u64, int);
+extern void volume_apply_change(struct iscsi_target *, struct list_head *);
+extern void volume_apply_lun0(struct iscsi_target *target, struct sdfs_lun_entry *lu);
+
+/**
+ * event.c
+ */
+extern int iscsi_listen(void);
+
+/**
+ * session.c
+ */
+extern int session_init();
+extern int session_create(struct iscsi_conn *);
+extern int session_remove(struct iscsi_session *sess);
+extern void session_free(struct iscsi_session *);
+extern struct iscsi_session *session_find_by_id(u64);
+extern struct iscsi_session *session_find_by_name(char *, union iscsi_sid, chkid_t *chkid);
+
+/**
+ * conn.c
+ */
+extern int conn_alloc(struct iscsi_conn **);
+extern int conn_add(struct iscsi_session *, struct iscsi_conn *);
+extern int conn_empty(struct iscsi_session *sess);
 extern void conn_close(struct iscsi_conn *);
-extern void conn_info_show(struct seq_file *, struct iscsi_session *);
+extern struct iscsi_conn *conn_find(struct iscsi_session *, u16);
+extern void conn_busy_get(struct iscsi_conn *);
+extern int conn_busy_put(struct iscsi_conn *);
+extern void conn_busy_tryfree(struct iscsi_conn *);
+extern void conn_update_stat_sn(struct iscsi_cmd *);
 
-/* nthread.c */
-extern int nthread_init(struct iscsi_target *);
-extern int nthread_start(struct iscsi_target *);
-extern int nthread_stop(struct iscsi_target *);
-extern void __nthread_wakeup(struct network_thread_info *);
-extern void nthread_wakeup(struct iscsi_target *);
+/**
+ * param.c
+ */
+extern int param_list_build(struct list_head *, struct iscsi_cmd *);
+extern void param_list_destroy(struct list_head *);
+extern char *param_list_find(struct list_head *, char *);
+extern int param_index_by_name(char *, struct iscsi_key *, int *);
+extern void param_set_defaults(struct iscsi_param *, struct iscsi_key *);
+extern void param_partial_set(struct iscsi_sess_param *, int, u32);
+extern void param_adjust_sess(struct iscsi_param *, struct iscsi_sess_param *);
+extern int param_val_to_str(struct iscsi_key *, int, unsigned int, char *);
+extern int param_str_to_val(struct iscsi_key *, int, char *, unsigned int *);
+extern int param_check_val(struct iscsi_key *, int, unsigned int *);
+extern int param_set_val(struct iscsi_key *, struct iscsi_param *, int, unsigned int *);
 
-/* wthread.c */
-extern int wthread_init(struct worker_thread_info *info);
-extern int wthread_start(struct worker_thread_info *info, int wthreads, u32 tid);
-extern int wthread_stop(struct worker_thread_info *info);
-extern void wthread_queue(struct iscsi_cmnd *);
-extern struct target_type *target_type_array[];
-extern int wthread_module_init(void);
-extern void wthread_module_exit(void);
-extern struct worker_thread_info *worker_thread_pool;
+/**
+ * cmds.c
+ */
+extern int iscsi_cmd_hook_init(void);
+extern struct iscsi_cmd_hook *iscsi_cmd_hook_get(int);
 
-/* target.c */
-extern int target_lock(struct iscsi_target *, int);
-extern void target_unlock(struct iscsi_target *);
-struct iscsi_target *target_lookup_by_id(u32);
-extern int target_add(struct target_info *);
-extern int target_del(u32 id);
-extern void target_del_all(void);
-extern struct seq_operations iet_seq_op;
+extern struct iscsi_cmd *create_sense_rsp(struct iscsi_cmd *req,
+                                          u8 sense_key, u8 asc, u8 ascq);
+extern void set_offset_and_length(struct iscsi_volume *lu, u8 *cmd, loff_t *off, u32 *len);
+extern void cmd_skip_data(struct iscsi_cmd *req);
+/**
+ * target_disk.c
+ */
+extern int disk_execute_cmd(struct iscsi_cmd *cmd);
+extern struct iscsi_cmd *create_scsi_rsp(struct iscsi_cmd *req);
+extern int target_cmd_queue(struct iscsi_cmd *cmd);
 
-/* config.c */
-extern int iet_procfs_init(void);
-extern void iet_procfs_exit(void);
-extern int iet_info_show(struct seq_file *, iet_show_info_t *);
+/**
+ * IO type supported
+ */
+extern struct iotype lich_io;
+int lichio_init(void);
 
-/* session.c */
-extern struct file_operations session_seq_fops;
-extern struct iscsi_session *session_lookup(struct iscsi_target *, u64);
-extern int session_add(struct iscsi_target *, struct session_info *);
-extern int session_del(struct iscsi_target *, u64);
+/**
+ * tio.c
+ */
+extern struct iscsi_tio *tio_alloc(struct iscsi_conn *conn, int);
+extern void tio_free(struct iscsi_conn *conn, struct iscsi_tio *tio);
+extern void tio_get(struct iscsi_tio *);
+extern void tio_put(struct iscsi_conn *conn, struct iscsi_cmd *);
+extern void tio_add_param(struct iscsi_cmd *, char *, char *);
+extern void tio_set_diskseek(struct iscsi_tio *tio, u64 off, u64 len);
+extern int tio_read(struct iscsi_cmd *);
+extern int tio_write(struct iscsi_cmd *);
+extern int tio_sync(struct iscsi_cmd *);
 
-/* volume.c */
-extern struct file_operations volume_seq_fops;
-extern int volume_add(struct iscsi_target *, struct volume_info *);
-extern int iscsi_volume_del(struct iscsi_target *, struct volume_info *);
-extern void iscsi_volume_destroy(struct iet_volume *);
-extern struct iet_volume *volume_lookup(struct iscsi_target *, u32);
-extern struct iet_volume *volume_get(struct iscsi_target *, u32);
-extern void volume_put(struct iet_volume *);
-extern int volume_reserve(struct iet_volume *volume, u64 sid);
-extern int volume_release(struct iet_volume *volume, u64 sid, int force);
-extern int is_volume_reserved(struct iet_volume *volume, u64 sid);
+/**
+ * ua.c
+ */
+extern int ua_pending(struct iscsi_session *, u32);
+extern struct ua_entry *ua_get_first(struct iscsi_session *, u32);
+extern struct ua_entry *ua_get_match(struct iscsi_session *, u32, u8, u8);
+extern void ua_free(struct ua_entry *);
+extern void ua_establish_for_session(struct iscsi_session *, u32 lun, u8, u8);
 
-/* tio.c */
-extern int tio_init(void);
-extern void tio_exit(void);
-extern struct tio *tio_alloc(int);
-extern void tio_get(struct tio *);
-extern void tio_put(struct tio *);
-extern void tio_set(struct tio *, u32, loff_t);
-extern int tio_read(struct iet_volume *, struct tio *);
-extern int tio_write(struct iet_volume *, struct tio *);
-extern int tio_sync(struct iet_volume *, struct tio *);
+/**
+ * digest.c
+ */
+extern int digest_rx_header(struct iscsi_cmd *);
+extern int digest_tx_header(struct iscsi_cmd *);
+extern int digest_rx_data(struct iscsi_cmd *);
+extern int digest_tx_data(struct iscsi_cmd *);
 
-/* iotype.c */
-extern struct iotype *get_iotype(const char *name);
-extern void put_iotype(struct iotype *iot);
+/**
+ * chap.c
+ */
+extern int cmd_exec_auth_chap(struct iscsi_cmd *, struct iscsi_cmd *);
+extern int ns_build_auth_chap(char *name, char *pass, struct iscsi_conn *conn);
 
-/* params.c */
-extern int iscsi_param_set(struct iscsi_target *, struct iscsi_param_info *, int);
+/**
+ * iscsi.c
+ */
+extern u32 translate_lun(u16 *);
 
-/* target_disk.c */
-extern struct target_type disk_ops;
+extern int iser_tio_pool_init();
+extern struct iscsi_cmd *iscsi_cmd_alloc(struct iscsi_conn *, int);
+extern int iscsi_cmd_release(struct iscsi_cmd *, int);
+extern int iscsi_cmd_remove(struct iscsi_cmd *);
+extern int iscsi_cmd_check_sn(struct iscsi_cmd *cmd);
+extern void iscsi_cmd_set_sn(struct iscsi_cmd *, int);
+extern struct iscsi_cmd *iscsi_cmd_find_hash(struct iscsi_session *, u32 itt, u32);
+extern int iscsi_cmd_insert_hash(struct iscsi_cmd *);
+extern void iscsi_cmd_remove_hash(struct iscsi_cmd *);
+extern void iscsi_cmd_init_write(struct iscsi_cmd *);
+extern void iscsi_cmd_list_init_write(struct list_head *);
+extern void iscsi_cmd_alloc_data_tio(struct iscsi_cmd *cmd);
+extern struct iscsi_cmd *iscsi_cmd_create_rsp_cmd(struct iscsi_cmd *, int);
+extern struct iscsi_cmd *iscsi_cmd_get_rsp_cmd(struct iscsi_cmd *);
+extern void iscsi_cmd_set_sense(struct iscsi_cmd *, u8, u8, u8);
+extern void iscsi_cmd_skip_pdu(struct iscsi_cmd *);
+extern void iscsi_cmd_reject(struct iscsi_cmd *, int);
+extern int iscsi_cmd_recv_pdu(struct iscsi_conn *conn, struct iscsi_tio *tio, u32 offset, u32 size);
+extern void iscsi_cmd_send_pdu(struct iscsi_conn *, struct iscsi_cmd *);
+extern void iscsi_cmd_send_pdu_tio(struct iscsi_conn *, struct iscsi_tio *, u32, u32);
+extern void iscsi_cmd_set_length(struct iscsi_pdu *);
+extern void iscsi_cmd_get_length(struct iscsi_pdu *);
+extern u32 iscsi_cmd_read_size(struct iscsi_cmd *);
+extern u32 iscsi_cmd_write_size(struct iscsi_cmd *);
+extern void iscsi_session_push_cmd(struct iscsi_cmd *);
+extern int cmd_rx_start(struct iscsi_cmd *cmd);
+extern int cmd_rx_end(struct iscsi_cmd *cmd);
+extern int cmd_tx_start(struct iscsi_cmd *);
+extern int cmd_tx_end(struct iscsi_cmd *);
 
-/* event.c */
-extern int event_send(u32, u64, u32, u32, int);
-extern int event_init(void);
-extern void event_exit(void);
+/**
+ * iscsid.c
+ */
+extern void iscsid_send(struct iscsi_conn *conn);
+extern void iscsid_recv(struct iscsi_conn *conn);
+extern void iscsid_exec(struct iscsi_cmd *cmd);
+extern int iscsi_connection_check(struct iscsi_conn *conn);
+extern int iscsi_session_check(struct iscsi_conn *conn);
+extern int iscsi_check_vip(struct iscsi_conn *conn);
+extern void iscsid_close(struct iscsi_conn *conn);
 
-/* ua.c */
-int ua_init(void);
-void ua_exit(void);
-struct ua_entry * ua_get_first(struct iscsi_session *, u32 lun);
-struct ua_entry * ua_get_match(struct iscsi_session *, u32 lun, u8 asc,
-			       u8 ascq);
-void ua_free(struct ua_entry *);
-int ua_pending(struct iscsi_session *, u32 lun);
-void ua_establish_for_session(struct iscsi_session *, u32 lun, u8 asc,
-			     u8 ascq);
-void ua_establish_for_other_sessions(struct iscsi_session *, u32 lun, u8 asc,
-				     u8 ascq);
-void ua_establish_for_all_sessions(struct iscsi_target *, u32 lun, u8 asc,
-				   u8 ascq);
+/**
+ * debug.c
+ */
+extern void iscsi_dump_pdu(struct iscsi_pdu *);
+extern void iscsi_dump_pdu_list(struct iscsi_cmd *);
+extern void iscsi_dump_tio(struct iscsi_tio *);
+extern void iscsi_dump_ua(struct ua_entry *, struct iscsi_session *, u32);
+extern void iscsi_dump_session_param(struct iscsi_sess_param *param);
 
-#define get_pgcnt(size, offset)	((((size) + ((offset) & ~PAGE_CACHE_MASK)) + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT)
+int tio_unmap(struct iscsi_cmd *cmd, uint64_t lba, uint32_t len);
 
-static inline void iscsi_cmnd_get_length(struct iscsi_pdu *pdu)
-{
-#if defined(__BIG_ENDIAN)
-	pdu->ahssize = pdu->bhs.length.ahslength * 4;
-	pdu->datasize = pdu->bhs.length.datalength;
-#elif defined(__LITTLE_ENDIAN)
-	pdu->ahssize = (pdu->bhs.length & 0xff) * 4;
-	pdu->datasize = be32_to_cpu(pdu->bhs.length & ~0xff);
-#else
-#error
-#endif
-}
+/**
+ * Extra
+ */
+extern int rdma_running;
+extern int srv_running;
 
-static inline void iscsi_cmnd_set_length(struct iscsi_pdu *pdu)
-{
-#if defined(__BIG_ENDIAN)
-	pdu->bhs.length.ahslength = pdu->ahssize / 4;
-	pdu->bhs.length.datalength = pdu->datasize;
-#elif defined(__LITTLE_ENDIAN)
-	pdu->bhs.length = cpu_to_be32(pdu->datasize) | (pdu->ahssize / 4);
-#else
-#error
-#endif
-}
-
-#define cmnd_hdr(cmnd) ((struct iscsi_scsi_cmd_hdr *) (&((cmnd)->pdu.bhs)))
-#define cmnd_ttt(cmnd) cpu_to_be32((cmnd)->pdu.bhs.ttt)
-#define cmnd_itt(cmnd) cpu_to_be32((cmnd)->pdu.bhs.itt)
-#define cmnd_opcode(cmnd) ((cmnd)->pdu.bhs.opcode & ISCSI_OPCODE_MASK)
-#define cmnd_scsicode(cmnd) cmnd_hdr(cmnd)->scb[0]
-#define cmnd_immediate(cmnd) ((cmnd)->pdu.bhs.opcode & ISCSI_OP_IMMEDIATE)
-
-/* default and maximum scsi level block sizes */
-#define IET_DEF_BLOCK_SIZE	512
-#define IET_MAX_BLOCK_SIZE	4096
-
-enum cmnd_flags {
-	CMND_hashed,
-	CMND_queued,
-	CMND_final,
-	CMND_waitio,
-	CMND_close,
-	CMND_lunit,
-	CMND_pending,
-	CMND_tmfabort,
-	CMND_rxstart,
-	CMND_timer_active,
-};
-
-#define set_cmnd_hashed(cmnd)	set_bit(CMND_hashed, &(cmnd)->flags)
-#define cmnd_hashed(cmnd)	test_bit(CMND_hashed, &(cmnd)->flags)
-
-#define set_cmnd_queued(cmnd)	set_bit(CMND_queued, &(cmnd)->flags)
-#define cmnd_queued(cmnd)	test_bit(CMND_queued, &(cmnd)->flags)
-
-#define set_cmnd_final(cmnd)	set_bit(CMND_final, &(cmnd)->flags)
-#define cmnd_final(cmnd)	test_bit(CMND_final, &(cmnd)->flags)
-
-#define set_cmnd_waitio(cmnd)	set_bit(CMND_waitio, &(cmnd)->flags)
-#define cmnd_waitio(cmnd)	test_bit(CMND_waitio, &(cmnd)->flags)
-
-#define set_cmnd_close(cmnd)	set_bit(CMND_close, &(cmnd)->flags)
-#define cmnd_close(cmnd)	test_bit(CMND_close, &(cmnd)->flags)
-
-#define set_cmnd_lunit(cmnd)	set_bit(CMND_lunit, &(cmnd)->flags)
-#define cmnd_lunit(cmnd)	test_bit(CMND_lunit, &(cmnd)->flags)
-
-#define set_cmnd_pending(cmnd)	set_bit(CMND_pending, &(cmnd)->flags)
-#define clear_cmnd_pending(cmnd)	clear_bit(CMND_pending, &(cmnd)->flags)
-#define cmnd_pending(cmnd)	test_bit(CMND_pending, &(cmnd)->flags)
-
-#define set_cmnd_tmfabort(cmnd)	set_bit(CMND_tmfabort, &(cmnd)->flags)
-#define cmnd_tmfabort(cmnd)	test_bit(CMND_tmfabort, &(cmnd)->flags)
-
-#define set_cmnd_rxstart(cmnd)	set_bit(CMND_rxstart, &(cmnd)->flags)
-#define cmnd_rxstart(cmnd)	test_bit(CMND_rxstart, &(cmnd)->flags)
-
-#define set_cmnd_timer_active(cmnd)  set_bit(CMND_timer_active, &(cmnd)->flags)
-#define clear_cmnd_timer_active(cmnd) \
-	                        clear_bit(CMND_timer_active, &(cmnd)->flags)
-#define cmnd_timer_active(cmnd) test_bit(CMND_timer_active, &(cmnd)->flags)
-
-#define VENDOR_ID	"IET"
-#define PRODUCT_ID	"VIRTUAL-DISK"
-#define PRODUCT_REV	"0"
-
-#endif	/* __ISCSI_H__ */
+#endif /* ISCSI_H */

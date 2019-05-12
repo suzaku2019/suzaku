@@ -13,8 +13,10 @@
  * any later version.
  *
  */
+#define DBG_SUBSYS      S_YISCSI
 
 #include "sha1.h"
+#include "dbg.h"
 
 /* SHA1 transforms */
 #define F1(x,y,z)   (z ^ (x & (y ^ z)))		/* x ? y : z */

@@ -15,9 +15,7 @@
 #include "network.h"
 #include "sdfs_quota.h"
 #include "core.h"
-#if 0
-#include "iscsid.h"
-#endif
+#include "iet/iscsid.h"
 #include "io_analysis.h"
 #include "ringlock.h"
 #include "partition.h"
@@ -118,7 +116,7 @@ retry:
 
         DINFO("frctl started...\n");
 
-#if 0
+#if 1
         int driver = 0;
         //driver |= ISCSID_DRIVER_ISER;
         driver |= ISCSID_DRIVER_TCP;

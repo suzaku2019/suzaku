@@ -6,171 +6,85 @@
  *
  * Released under the terms of the GNU GPL v2.0.
  */
+#include <stdlib.h>
 
-#include <scsi/scsi.h>
+#define DBG_SUBSYS      S_YISCSI
 
 #include "iscsi.h"
-#include "iscsi_dbg.h"
+#include "dbg.h"
 
-#define ua_hashfn(lun) ((lun % UA_HASH_LEN))
+#define ua_hashfn(lun) ((lun) % ISCSI_UA_HASH_LEN)
 
-static struct kmem_cache *ua_cache;
-
-int ua_init(void)
+static struct ua_entry *__ua_find_hash(struct iscsi_session *sess, u32 lun,
+                                     u8 asc, u8 ascq, int match)
 {
-	ua_cache = KMEM_CACHE(ua_entry, 0);
-	if (!ua_cache) {
-		eprintk("%s", "Failed to create ua cache\n");
-		return -ENOMEM;
-	}
+        struct ua_entry *ua;
+        struct list_head *head = &sess->ua_hash[ua_hashfn(lun)];
 
-	return 0;
+        list_for_each_entry(ua, head, entry) {
+                if (ua->lun == lun) {
+                        if (!match)
+                                goto found;
+                        if (ua->asc == asc && ua->ascq == ascq)
+                                goto found;
+                }
+        }
+
+        return NULL;
+found:
+        return ua;
 }
 
-void ua_exit(void)
+static struct ua_entry *__ua_get_hash(struct iscsi_session *sess, u32 lun,
+                                      u8 asc, u8 ascq, int match)
 {
-	if (ua_cache)
-		kmem_cache_destroy(ua_cache);
-}
+        struct ua_entry *ua;
 
-/* sess->ua_hash_lock needs to be held */
-static struct ua_entry * ua_find_hash(struct iscsi_session *sess, u32 lun,
-				      u8 asc, u8 ascq, int match)
-{
-	struct ua_entry *ua;
-	struct list_head *h = &sess->ua_hash[ua_hashfn(lun)];
+        ua = __ua_find_hash(sess, lun, asc, ascq, match);
+        if (ua)
+                list_del_init(&ua->entry);
 
-	list_for_each_entry(ua, h, entry) {
-		if (ua->lun == lun) {
-			if (!match)
-				return ua;
-			if (ua->asc == asc && ua->ascq == ascq)
-				return ua;
-		}
-	}
-
-	return NULL;
+        return ua;
 }
 
 int ua_pending(struct iscsi_session *sess, u32 lun)
 {
-	struct ua_entry *ua;
+        struct ua_entry *ua;
 
-	spin_lock(&sess->ua_hash_lock);
-	ua = ua_find_hash(sess, lun, 0, 0, 0);
-	spin_unlock(&sess->ua_hash_lock);
+        ua = __ua_find_hash(sess, lun, 0, 0, 0);
 
-	dprintk_ua(ua, sess, lun);
+        iscsi_dump_ua(ua, sess, lun);
 
-	return ua ? 1 : 0;
+        return ua ? 1 : 0;
 }
 
-/* sess->ua_hash_lock needs to be held */
-static struct ua_entry * __ua_get_hash(struct iscsi_session *sess, u32 lun,
-				       u8 asc, u8 ascq, int match)
+struct ua_entry *ua_get_first(struct iscsi_session *sess, u32 lun)
 {
-	struct ua_entry *ua = ua_find_hash(sess, lun, asc, ascq, match);
+        struct ua_entry *ua;
 
-	if (ua)
-		list_del_init(&ua->entry);
+        ua = __ua_get_hash(sess, lun, 0, 0, 0);
 
-	return ua;
+        iscsi_dump_ua(ua, sess, lun);
+
+        return ua;
 }
 
-struct ua_entry * ua_get_first(struct iscsi_session *sess, u32 lun)
+struct ua_entry *ua_get_match(struct iscsi_session *sess, u32 lun,
+                              u8 asc, u8 ascq)
 {
-	struct ua_entry *ua;
+        struct ua_entry *ua;
 
-	spin_lock(&sess->ua_hash_lock);
-	ua = __ua_get_hash(sess, lun, 0, 0, 0);
-	spin_unlock(&sess->ua_hash_lock);
+        ua = __ua_get_hash(sess, lun, asc, ascq, 1);
 
-	dprintk_ua(ua, sess, lun);
+        iscsi_dump_ua(ua, sess, lun);
 
-	return ua;
-}
-
-struct ua_entry * ua_get_match(struct iscsi_session *sess, u32 lun,
-			       u8 asc, u8 ascq)
-{
-	struct ua_entry *ua;
-
-	spin_lock(&sess->ua_hash_lock);
-	ua = __ua_get_hash(sess, lun, asc, ascq, 1);
-	spin_unlock(&sess->ua_hash_lock);
-
-	dprintk_ua(ua, sess, lun);
-
-	return ua;
-}
-
-void ua_establish_for_session(struct iscsi_session *sess, u32 lun,
-			      u8 asc, u8 ascq)
-{
-	struct list_head *l = &sess->ua_hash[ua_hashfn(lun)];
-	struct ua_entry *ua = kmem_cache_alloc(ua_cache, GFP_ATOMIC);
-	struct ua_entry *e;
-
-	if (!ua) {
-		eprintk("%s", "Failed to alloc ua");
-		return;
-	}
-
-	ua->asc = asc;
-	ua->ascq = ascq;
-	ua->lun = lun;
-	ua->session = sess;
-	INIT_LIST_HEAD(&ua->entry);
-
-	spin_lock(&sess->ua_hash_lock);
-	/* One UA per occurrence of an event */
-	list_for_each_entry(e, l, entry) {
-		if (e->session == sess && e->lun == lun &&
-				e->asc == asc && e->ascq == ascq &&
-				e->session->exp_cmd_sn == sess->exp_cmd_sn) {
-			spin_unlock(&sess->ua_hash_lock);
-			ua_free(ua);
-			return;
-		}
-	}
-	list_add_tail(&ua->entry, l);
-	spin_unlock(&sess->ua_hash_lock);
-
-	dprintk_ua(ua, sess, lun);
-}
-
-void ua_establish_for_other_sessions(struct iscsi_session *sess, u32 lun,
-				     u8 asc, u8 ascq)
-{
-	struct list_head *l = &sess->target->session_list;
-	struct iscsi_session *s;
-
-	spin_lock(&sess->target->session_list_lock);
-	list_for_each_entry(s, l, list)
-		if (s->sid != sess->sid)
-			ua_establish_for_session(s, lun, asc, ascq);
-	spin_unlock(&sess->target->session_list_lock);
-}
-
-void ua_establish_for_all_sessions(struct iscsi_target *target, u32 lun,
-				   u8 asc, u8 ascq)
-{
-	struct list_head *l = &target->session_list;
-	struct iscsi_session *s;
-
-	spin_lock(&target->session_list_lock);
-	list_for_each_entry(s, l, list)
-		ua_establish_for_session(s, lun, asc, ascq);
-	spin_unlock(&target->session_list_lock);
-
+        return ua;
 }
 
 void ua_free(struct ua_entry *ua)
 {
-	if (!ua)
-		return;
-
-	dprintk_ua(ua, ua->session, ua->lun);
-	BUG_ON(!list_empty(&ua->entry));
-	kmem_cache_free(ua_cache, ua);
+        if (ua) {
+                iscsi_dump_ua(ua, ua->session, ua->lun);
+                free(ua);
+        }
 }

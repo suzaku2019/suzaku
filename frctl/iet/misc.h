@@ -1,97 +1,35 @@
-/*
- * Released under the terms of the GNU GPL v2.0.
- */
-
 #ifndef MISC_H
 #define MISC_H
 
-struct __qelem {
-	struct __qelem *q_forw;
-	struct __qelem *q_back;
-};
-
-/* stolen list stuff from Linux kernel */
-
-#undef offsetof
-#ifdef __compiler_offsetof
-#define offsetof(TYPE,MEMBER) __compiler_offsetof(TYPE,MEMBER)
-#else
-#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
-#endif
-
-#define LIST_HEAD_INIT(name) { &(name), &(name) }
-#define LIST_HEAD(name) \
-	struct __qelem name = LIST_HEAD_INIT(name)
-
-#define INIT_LIST_HEAD(ptr) do { \
-	(ptr)->q_forw = (ptr); (ptr)->q_back = (ptr); \
+#define ntoh24(p) (((p)[0] << 16) | ((p)[1] << 8) | ((p)[2]))
+#define hton24(p, v) do { \
+        p[0] = (((v) >> 16) & 0xFF); \
+        p[1] = (((v) >> 8) & 0xFF); \
+        p[2] = ((v) & 0xFF); \
 } while (0)
 
-static inline int list_empty(const struct __qelem *head)
+#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
+#define roundup(x, y) ((((x) + ((y) - 1)) / (y)) * (y))
+#define ALIGN(x,a) (((x)+(a)-1)&~((a)-1))
+
+#define uint64_from_ptr(p) (uint64_t)(uintptr_t)(p)
+#define ptr_from_int64(p) (void *)(unsigned long)(p)
+
+static inline int before(u32 seq1, u32 seq2)
 {
-	return head->q_forw == head;
+        return (s32)(seq1 - seq2) < 0;
 }
 
-static inline int list_length_is_one(const struct __qelem *head)
+#define after(seq2, seq1)       before(seq1, seq2)
+
+static inline int between(u32 seq1, u32 seq2, u32 seq3)
 {
-        return (!list_empty(head) && head->q_forw == head->q_back);
+        return seq3 - seq2 >= seq1 - seq2;
 }
 
-#define container_of(ptr, type, member) ({			\
-        const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
-        (type *)( (char *)__mptr - offsetof(type,member) );})
+#define MASK_BY_BIT(b)  	((1UL << b) - 1)
+#define ALIGN_TO_BIT(x, b)      ((((unsigned long)x) + MASK_BY_BIT(b)) & \
+				 ~MASK_BY_BIT(b))
+#define ALIGN_TO_32(x)  	ALIGN_TO_BIT(x, 5)
 
-#define list_entry(ptr, type, member) \
-	container_of(ptr, type, member)
-
-#define list_for_each_entry(pos, head, member)				\
-	for (pos = list_entry((head)->q_forw, typeof(*pos), member);	\
-	     &pos->member != (head); 	\
-	     pos = list_entry(pos->member.q_forw, typeof(*pos), member))
-
-#define list_for_each_entry_safe(pos, n, head, member)			\
-	for (pos = list_entry((head)->q_forw, typeof(*pos), member),	\
-		n = list_entry(pos->member.q_forw, typeof(*pos), member);	\
-	     &pos->member != (head); 					\
-	     pos = n, n = list_entry(n->member.q_forw, typeof(*n), member))
-
-#define list_del(elem) remque(elem)
-
-#define list_del_init(elem) do {		\
-		remque(elem);			\
-		INIT_LIST_HEAD(elem);		\
-	} while (0)
-
-#define list_add(new, head) insque (new, head)
-
-#define list_add_tail(new, head) insque(new, (head)->q_back)
-
-/* min()/max() that do strict type-checking. Lifted from the kernel. */
-#define min(x, y) ({				\
-	typeof(x) _min1 = (x);			\
-	typeof(y) _min2 = (y);			\
-	(void) (&_min1 == &_min2);		\
-	_min1 < _min2 ? _min1 : _min2; })
-
-#define max(x, y) ({				\
-	typeof(x) _max1 = (x);			\
-	typeof(y) _max2 = (y);			\
-	(void) (&_max1 == &_max2);		\
-	_max1 > _max2 ? _max1 : _max2; })
-
-/* ... and their non-checking counterparts, also taken from the kernel. */
-#define min_t(type, x, y) ({			\
-	type __min1 = (x);			\
-	type __min2 = (y);			\
-	__min1 < __min2 ? __min1: __min2; })
-
-#define max_t(type, x, y) ({			\
-	type __max1 = (x);			\
-	type __max2 = (y);			\
-	__max1 > __max2 ? __max1: __max2; })
-
-#ifndef IPV6_V6ONLY
-#define IPV6_V6ONLY	26
-#endif
-
-#endif
+#endif /* MISC_H */
