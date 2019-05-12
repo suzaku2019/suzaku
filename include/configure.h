@@ -93,6 +93,7 @@ struct sanconf_t
         char iqn[MAXSIZE];
         int lun_blk_shift;
         int tcp_discovery;
+        int iscsi_port;
 };
 
 /* web configure */
@@ -109,13 +110,12 @@ struct mdsconf_t
         char db[MAX_NAME_LEN];
         uint64_t disk_keep;
 
-        int main_loop_threads;
         int redis_baseport;
         int redis_sharding;
         int redis_replica;
         int redis_thread;
         int size_on_md;
-        int ac_timeout;
+        int master_timeout;
 };
 
 /* cds configure */
@@ -162,6 +162,7 @@ struct gloconf_t
         char cluster_name[MAXSIZE];
         char iscsi_iqn[MAXSIZE];
         char uuid[UUID_LEN];
+        int cluster_id;
         int coredump;
         int backtrace;
         int testing;

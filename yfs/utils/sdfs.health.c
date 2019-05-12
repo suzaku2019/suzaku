@@ -125,26 +125,22 @@ static int __get_qos_sleep()
 static int __chunk_check(void *_rept, const void *k, const void *_chkinfo, const fileinfo_t *_md)
 {
         int ret, online, i, needcheck;
-        objinfo_t *objinfo;
-        char _buf[MAX_BUF_LEN], _buf2[MAX_BUF_LEN];
-        diskid_t *diskid;
+        char _buf2[MAX_BUF_LEN];
+        reploc_t *reploc;
         net_handle_t nh;
         rept_t *rept;
         chkinfo_t *chkinfo;
 
-        objinfo = (void *)_buf;
         chkinfo = (void *)_buf2;
         (void)k;
 
-        chkinfo = memcpy(chkinfo, _chkinfo, CHK_SIZE(((chkinfo_t *)_chkinfo)->repnum));
+        chkinfo = memcpy(chkinfo, _chkinfo, CHKINFO_SIZE(((chkinfo_t *)_chkinfo)->repnum));
         rept = _rept;
 
         if (chkinfo->chkid.id == CHKID_NULL && chkinfo->chkid.id == CHKVER_NULL)
                 return 0;
 
         yatomic_get_and_inc(&__total__, NULL);
-
-        chk2obj(objinfo, chkinfo);
 
         if (__full__) {
                 printf("  chunk "CHKID_FORMAT" force sync\n", CHKID_ARG(&chkinfo->chkid));
@@ -161,16 +157,16 @@ static int __chunk_check(void *_rept, const void *k, const void *_chkinfo, const
         if (chkinfo->repnum > _md->repnum) {
                 needcheck++;
         } else {
-                for (i = 0; i < (int)objinfo->repnum; i++) {
-                                diskid = &objinfo->diskid[i];
+                for (i = 0; i < (int)chkinfo->repnum; i++) {
+                                reploc = &chkinfo->diskid[i];
 
-                                if (is_null(diskid)) {
+                                if (is_null(&reploc->id)) {
                                         DWARN("chunk "OBJID_FORMAT" rep %d is null\n",
                                                         OBJID_ARG(&chkinfo->chkid), i);
                                         continue;
                                 }
 
-                                id2nh(&nh, diskid);
+                                id2nh(&nh, &reploc->id);
                                 ret = network_connect2(&nh, 0);
                                 if (ret) {
                                         //YASSERT(0);
@@ -179,14 +175,14 @@ static int __chunk_check(void *_rept, const void *k, const void *_chkinfo, const
 
                                 online++;
 
-                                if (diskid->status & __S_DIRTY) {
+                                if (reploc->status & __S_DIRTY) {
                                         needcheck++;
                                 }
                         }
 
         }
 
-        if (needcheck || online != (int)objinfo->repnum ) {
+        if (needcheck || online != (int)chkinfo->repnum ) {
                 printf("  chunk "OBJID_FORMAT" rep %u online %u dirty %u\n",
                                 OBJID_ARG(&chkinfo->chkid), chkinfo->repnum, online, needcheck);
 
@@ -196,7 +192,7 @@ static int __chunk_check(void *_rept, const void *k, const void *_chkinfo, const
                 if (ret)
                         GOTO(err_ret, ret);
 
-                ret = _write(rept->fd, &objinfo->id, sizeof(objinfo->id));
+                ret = _write(rept->fd, &chkinfo->chkid, sizeof(chkinfo->chkid));
                 if (ret < 0) {
                         YASSERT(0);
                 }
@@ -210,10 +206,10 @@ err_ret:
         return ret;
 }
 
-static int __chunk_recover_send(objid_t *id, int count)
+static int __chunk_recover_send(chkid_t *id, int count)
 {
         int ret, i;
-        objid_t *objid;
+        chkid_t *objid;
 
         for (i = 0; i < count; i++) {
                 objid = &id[i];
@@ -221,7 +217,7 @@ static int __chunk_recover_send(objid_t *id, int count)
                 if (ret) {
                         DWARN("chunk "OBJID_FORMAT" ret: %d\n", OBJID_ARG(objid), ret);
                         objid->id = 0;
-                        objid->volid = 0;
+                        objid->poolid = 0;
                         objid->idx = 0;
                         __fail__++;
                         continue;
@@ -231,17 +227,17 @@ static int __chunk_recover_send(objid_t *id, int count)
         return 0;
 }
 
-static int __chunk_recover_check(const objid_t *id, int count)
+static int __chunk_recover_check(const chkid_t *id, int count)
 {
         int ret, i, retry, slp = 0;
-        objid_t *objid;
+        chkid_t *objid;
 
         printf("\n");
 
         for (i = 0; i < count; i++) {
                 objid = (void *)&id[i];
 
-                if (objid->id == 0 && objid->volid == 0 && objid->idx == 0)
+                if (objid->id == 0 && objid->poolid == 0 && objid->idx == 0)
                         continue;
 
                 slp = __get_qos_sleep();
@@ -289,7 +285,7 @@ static int __etcd_report(const char *volume, int sharding, uint64_t lost, int fo
         snprintf(key, MAX_PATH_LEN, "%s/health", prefix);
         snprintf(value, MAX_PATH_LEN, "lost:%llu", (LLU)lost);
         DINFO("key %s value %s, last report %u\n", key, value, __last_report__);
-        ret = etcd_update_text(ETCD_VOLUME, key, value, NULL, 0);
+        ret = etcd_update_text(ETCD_POOL, key, value, NULL, 0);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -303,7 +299,7 @@ err_ret:
 static int __chunk_recover(const char *volume, int sharding, rept_t *rept, int max)
 {
         int ret, count;
-        objid_t buf[RECOVER_MAX];
+        chkid_t buf[RECOVER_MAX];
         char path[MAX_PATH_LEN], value[MAX_BUF_LEN];;
         struct stat stbuf;
 
@@ -329,7 +325,7 @@ static int __chunk_recover(const char *volume, int sharding, rept_t *rept, int m
         snprintf(path, MAX_PATH_LEN, "%s/losted.offset", __workdir__);
 
         while (1) {
-                ret = _read(rept->fd, buf, sizeof(objid_t) * max);
+                ret = _read(rept->fd, buf, sizeof(chkid_t) * max);
                 if (ret < 0) {
                         ret = -ret;
                         GOTO(err_ret, ret);
@@ -338,10 +334,10 @@ static int __chunk_recover(const char *volume, int sharding, rept_t *rept, int m
                 if (ret == 0)
                         break;
 
-                YASSERT(ret % sizeof(objid_t) == 0);
+                YASSERT(ret % sizeof(chkid_t) == 0);
 
                 rept->offset += ret;
-                count = ret / sizeof(objid_t);
+                count = ret / sizeof(chkid_t);
 
                 ret = __chunk_recover_send(buf, count);
                 if (ret)
@@ -546,7 +542,7 @@ static int __redis_scan(const char *volume, int sharding, rept_t *rept)
 
         snprintf(key, MAX_PATH_LEN, "%s/health", prefix);
         snprintf(value, MAX_PATH_LEN, "lost:0");
-        ret = etcd_create_text(ETCD_VOLUME, key, value, 0);
+        ret = etcd_create_text(ETCD_POOL, key, value, 0);
         if (ret) {
                 if (ret == EEXIST) {
                         //pass
@@ -555,7 +551,7 @@ static int __redis_scan(const char *volume, int sharding, rept_t *rept)
         }
         
         snprintf(key, MAX_PATH_LEN, "%s/master", prefix);
-        ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+        ret = etcd_get_text(ETCD_POOL, key, value, NULL);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -615,7 +611,7 @@ static int __health_redis(const char *volume, int slot, int replica, int *master
         char master_addr[MAX_NAME_LEN], addr[MAX_NAME_LEN], key[MAX_NAME_LEN];
 
         snprintf(key, MAX_NAME_LEN, "%s/solt/%d/master", volume, slot);
-        ret = etcd_get_text(ETCD_VOLUME, key, master_addr, NULL);
+        ret = etcd_get_text(ETCD_POOL, key, master_addr, NULL);
         if(ret) {
                 if (ret == ENOKEY) {
                         *master = 0;
@@ -630,7 +626,7 @@ static int __health_redis(const char *volume, int slot, int replica, int *master
         for (i = 0; i < replica; i++) {
                 snprintf(key, MAX_PATH_LEN, "%s/solt/%d/redis/%d", volume, slot, i);
 
-                ret = etcd_get_text(ETCD_VOLUME, key, addr, NULL);
+                ret = etcd_get_text(ETCD_POOL, key, addr, NULL);
                 if(ret) {
                         GOTO(err_ret, ret);
                 }
@@ -657,7 +653,7 @@ static int __health_dump_sharding(const char *volume, int idx, int replica)
         char key[MAX_PATH_LEN], value[MAX_PATH_LEN];
 
         snprintf(key, MAX_PATH_LEN, "%s/solt/%d/health", volume, idx);
-        ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+        ret = etcd_get_text(ETCD_POOL, key, value, NULL);
         if(ret) {
                 if (ret == ENOKEY) {
                         snprintf(value, MAX_PATH_LEN, "lost:0");
@@ -689,14 +685,14 @@ static int __health_dump_volume(const char *volume)
         char key[MAX_PATH_LEN], value[MAX_PATH_LEN];
 
         snprintf(key, MAX_PATH_LEN, "%s/sharding", volume);
-        ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+        ret = etcd_get_text(ETCD_POOL, key, value, NULL);
         if (ret)
                 GOTO(err_ret, ret);
 
         sharding = atoi(value);
 
         snprintf(key, MAX_PATH_LEN, "%s/replica", volume);
-        ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+        ret = etcd_get_text(ETCD_POOL, key, value, NULL);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -719,7 +715,7 @@ static int __health_dump()
         int ret, i;
         etcd_node_t *array, *node = NULL;
 
-        ret = etcd_list(ETCD_VOLUME, &array);
+        ret = etcd_list(ETCD_POOL, &array);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -809,7 +805,7 @@ static int __scan_all__(rept_t *rept, int thread, const char *volume)
         char key[MAX_PATH_LEN], value[MAX_PATH_LEN];
 
         snprintf(key, MAX_PATH_LEN, "%s/sharding", volume);
-        ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+        ret = etcd_get_text(ETCD_POOL, key, value, NULL);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -831,7 +827,7 @@ static int __scan_all(rept_t *rept, int thread)
         int ret, i;
         etcd_node_t *array, *node;
 
-        ret = etcd_list(ETCD_VOLUME, &array);
+        ret = etcd_list(ETCD_POOL, &array);
         if (ret)
                 GOTO(err_ret, ret);
 

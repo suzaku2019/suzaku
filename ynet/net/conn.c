@@ -31,7 +31,7 @@
 #include "corenet_maping.h"
 #include "net_rpc.h"
 #include "network.h"
-#include "mond_rpc.h"
+#include "mds_rpc.h"
 #include "dbg.h"
 
 #define ENABLE_ETCD_CONN 0
@@ -147,7 +147,7 @@ static int __conn_add(const nid_t *nid)
         __faultdomain_last_update__ = 0;
 #endif
 
-        ret = mond_rpc_getstat(nid, &instat);
+        ret = mds_rpc_getstat(nid, &instat);
         if (ret) {
                 DINFO("%u %s not online\n", nid->id, info->name);
                 goto out;
@@ -304,7 +304,7 @@ static int __conn_scan__()
         nid_t nid;
 
 retry:
-        ret = network_connect_mond(1);
+        ret = network_connect_mds(1);
         if (ret) {
                 ret = _errno(ret);
                 if (ret == EAGAIN) {

@@ -77,9 +77,9 @@ int main(int argc, char *argv[])
                         GOTO(err_ret, ret);
         } else {
 #ifdef __x86_64__
-                ret = sscanf(arg, "%lu_v%lu", &fileid.id, &fileid.volid);
+                ret = sscanf(arg, "%lu_v%lu", &fileid.id, &fileid.poolid);
 #else
-                ret = sscanf(arg, "%llu_v%llu", &fileid.id, &fileid.volid);
+                ret = sscanf(arg, "%llu_v%llu", &fileid.id, &fileid.poolid);
 #endif
 
                 if (ret != 2) {
@@ -114,8 +114,9 @@ int main(int argc, char *argv[])
                 snprintf(ec, MAX_NAME_LEN, "%d+%d", md->k, md->m-md->k);
         }
 
-        printf("path: %s; fileid: %llu_v%llu; mode: %s/%s %o; size:%llu; link:%lu; layout: %s\n",
-               arg, (LLU)fileid.id, (LLU)fileid.volid,
+        printf("path: %s\nfileid: "FILEID_FORMAT"\nmode: %s/%s %o\nsize:"
+               " %llu\nlink: %lu\nlayout: %s\n",
+               arg, FILEID_ARG(&fileid),
                S_ISDIR((stbuf).st_mode) ? "d" : "",
                S_ISREG((stbuf).st_mode) ? "f" : "", stbuf.st_mode & 00777,
                (LLU)size, (unsigned long)stbuf.st_nlink, ec);

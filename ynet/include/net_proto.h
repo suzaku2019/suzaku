@@ -47,11 +47,14 @@ typedef enum {
         MSG_LOOKUP,
         MSG_PING,
         MSG_MDP,
-        MSG_CDP,
-        MSG_ODP,
         MSG_REPLICA,
-        MSG_CORENET,
-        MSG_MOND,
+        MSG_REPLICA_CORE,
+        MSG_LEASE,
+        MSG_RINGLOCK,
+        MSG_RANGE,
+        MSG_RANGE_CORE,
+        MSG_MDS,
+        MSG_MDS_CORE,
         MSG_MAX,
 } net_progtype_t;
 

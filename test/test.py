@@ -24,8 +24,8 @@ CUR_PATH = os.path.abspath(os.path.split(os.path.realpath(__file__))[0])
 TEST_PATH = "/opt/sdfs"
 INSTALL_PATH = "/opt/sdfs"
 LOG_PATH = "/tmp/sdfs_test"
-CDS = 7
-MDS = 1
+BACTL = 1
+MDCTL = 1
 RUNNING = 0
 OBJMVING = 0
 
@@ -58,14 +58,14 @@ def health(node):
                     time.sleep(1)
                     retry = retry + 1
 
-def cds_check(i):
+def bactl_check(i):
     retry = 0
     retry_max = 3
     while True:
         if i.running():
             break
         if retry > retry_max:
-            fail_exit("cds %s not runing" % (str(i)))
+            fail_exit("bactl %s not runing" % (str(i)))
             raise Exp("%s %s check fail" % (i.role, i.service), 1)
         retry = retry + 1
         time.sleep(1)
@@ -74,18 +74,18 @@ def _fail_simulate_loop():
     config = Config(TEST_PATH)
     node = Node(config)
     instences = []
-    for i in range(CDS):
-        instences.append(Instence('cds', i, config))
+    for i in range(BACTL):
+        instences.append(Instence('bactl', i, config))
 
-    rand = random.randint(0, CDS)
+    rand = random.randint(0, BACTL)
     fail_num = 0
     global RUNNING
     while RUNNING:
         for i in instences:
-            cds_check(i)
+            bactl_check(i)
 
-        i = (rand + fail_num) % CDS
-        dmsg("simulate fail[%s], will stop cds[%s]" % (fail_num, i))
+        i = (rand + fail_num) % BACTL
+        dmsg("simulate fail[%s], will stop bactl[%s]" % (fail_num, i))
         instences[i].stop()
         time.sleep(10) #wait rpc timeout
         health(node)
@@ -151,7 +151,7 @@ def _get_dest_nid(filename):
 
     print "replica nid:%s" % (replica_nids)
 
-    cmd = "sdfs.cluster list | grep cds | grep running | awk '{print $3}'"
+    cmd = "sdfs.cluster list | grep bactl | grep running | awk '{print $3}'"
     out, err = exec_shell(cmd, p=False, need_return=True)
     cluster_nids = out.split('\n')
     if cluster_nids[len(cluster_nids) - 1] == "":
@@ -295,10 +295,6 @@ def test_clean():
 
     os.system("pkill -9 sdfs")
     os.system("pkill -9 redis")
-    dmsg("cleanup redis")
-    #os.system("systemctl stop redis")
-    #os.system("rm -rf /var/lib/redis/*")
-    #os.system("systemctl start redis")
     dmsg("cleanup etcd")
     os.system("systemctl stop etcd")
     os.system("rm -rf `grep ETCD_DATA_DIR /etc/etcd/etcd.conf | awk -F '=' '{print $2}' | sed  's/\"//g'`")
@@ -310,9 +306,8 @@ def test_clean():
         os.system("rm -rf %s" % (TEST_PATH))
     except Exp, e:
         #加try是为了规避目录非空的错误
-        #目录下会存在 uss.mdstat todo 查下原因
+        #目录下会存在 uss.mdctltat todo 查下原因
         pass
-    #os.system("redis-cli flushdb")
     os.system("rm -rf /dev/shm/sdfs")
 
 def test_install():
@@ -469,56 +464,43 @@ def test_init():
     #exec_shell("mkdir -p %s" % (TEST_PATH)) 
     #exec_shell("cd %s && tar czf %s/app.tar.gz app/ && cd %s && tar xvf app.tar.gz" % (INSTALL_PATH, TEST_PATH, TEST_PATH))
     os.system("cp -r %s/sdfs.conf %s/etc/" % (CUR_PATH, TEST_PATH))
-    os.system("cp -r %s/exports.conf %s/etc/" % (CUR_PATH, TEST_PATH))
-    #os.system("cp -r %s/cluster.conf %s/etc/" % (CUR_PATH, TEST_PATH))
+    #os.system("cp -r %s/exports.conf %s/etc/" % (CUR_PATH, TEST_PATH))
     os.system("cp -r %s/redis.conf.tpl %s/etc/" % (CUR_PATH, TEST_PATH))
+    #os.system("cp -r %s/cluster.conf %s/etc/" % (CUR_PATH, TEST_PATH))
     os.system("cp -r %s/ftp.conf %s/etc/" % (CUR_PATH, TEST_PATH))
     cmd = "sed -i 's/127.0.0.0/%s/g' %s/etc/sdfs.conf" % (ip, TEST_PATH)
     print cmd
     os.system(cmd)
     #nfs_conf_init()
-    os.system("mkdir -p %s/data/mond/0" % (TEST_PATH))
-    for i in range(CDS):
-        os.system("mkdir -p %s/data/cds/%s" % (TEST_PATH, i))
-        os.system("touch %s/data/cds/%s/fake" % (TEST_PATH, i))
-
+    os.system("mkdir -p %s/data/mdctl" % (TEST_PATH))
+    os.system("mkdir -p %s/data/bactl" % (TEST_PATH))
+    #os.system("touch %s/data/bactl/fake" % (TEST_PATH))
+        
     ldconfig = "/etc/ld.so.conf.d/sdfs.conf"
     os.system("rm -rf %s" % (ldconfig))
 
     #fake cluster config
-    r = "redis[" + ','.join(str(i) for i in range(2)) + ']'
-    c = "cds[" + ','.join(str(i) for i in range(CDS)) + ']'
-    cmd = "echo '%s %s mond[0] %s nfs[0]' > %s/etc/cluster.conf" % (socket.gethostname(), r, c, TEST_PATH)
+    #c = "bactl[" + ','.join(str(i) for i in range(BACTL)) + ']'
+    #cmd = "echo '%s mdctl[0] %s nfs[0]' > %s/etc/cluster.conf" % (socket.gethostname(), c, TEST_PATH)
     #print cmd
-    os.system(cmd)
+    #os.system(cmd)
    
-    config = Config(TEST_PATH)
-    count = config.redis_sharding * config.redis_replica
-
     #for i in count
-    r = "redis[" + ','.join(str(i) for i in range(count)) + ']'
-    c = "cds[" + ','.join(str(i) for i in range(CDS)) + ']'
-    cmd = "echo '%s %s mond[0] %s nfs[0]' > %s/etc/cluster.conf" % (socket.gethostname(), r, c, TEST_PATH)
+    cmd = "echo '%s' > %s/etc/cluster.conf" % (socket.gethostname(), TEST_PATH)
     print cmd
     os.system(cmd)
     
     config = Config(TEST_PATH)
-    count = config.redis_sharding * config.redis_replica
-    #for i in range(count):
-    #    os.system("mkdir -p %s/data/redis/%d" % (TEST_PATH, i))
-
     cluster = Cluster(config)
     cluster.create([socket.gethostname()])
-    #prepare_share_directory(config)
-    #prepare_mount_nfs(config)
 
 def test():
     script_path = os.path.join(CUR_PATH, 'script')
 
     #test_objmv()
     
-    #exec_shell("python2 %s/test_list.py --length 10 --home %s >> %s/fileop.log 2>&1" % (CUR_PATH, TEST_PATH, LOG_PATH))
-    exec_shell("python2 %s/nfs_test.py --home %s  >> %s/nfs.log 2>&1 && sync && umount /mnt/nfs" % (script_path, TEST_PATH, LOG_PATH))
+    exec_shell("python2 %s/test_list.py --length 1 --home %s >> %s/fileop.log 2>&1" % (CUR_PATH, TEST_PATH, LOG_PATH))
+    #exec_shell("python2 %s/nfs_test.py --home %s  >> %s/nfs.log 2>&1 && sync && umount /mnt/nfs" % (script_path, TEST_PATH, LOG_PATH))
     #exec_shell("python2 %s/ftp_test.py --home %s  >> %s/ftp.log 2>&1" % (script_path, TEST_PATH, LOG_PATH))
     #exec_shell("python2 %s/group_test.py  >> %s/misc.log 2>&1" % (script_path, LOG_PATH))
     #exec_shell("python2 %s/user_test.py >> %s/misc.log 2>&1" % (script_path, LOG_PATH))

@@ -11,7 +11,7 @@ do
     ssh $n 'pkill -9 sdfs'
     ssh $n 'pkill -9 redis'
     ssh $n 'pkill -9 python'
-    ssh $n 'rm -rf /opt/sdfs/data/mond/*/*'
+    ssh $n 'rm -rf /opt/sdfs/data/mds/*/*'
     ssh $n 'rm -rf /opt/sdfs/data/etcd/*'
     ssh $n 'rm -rf /opt/sdfs/data/redis/*/*'
     ssh $n 'rm -rf /opt/sdfs/data/cds/*/*'

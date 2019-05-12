@@ -27,9 +27,7 @@ from vip import vip_unset, vip_set, del_local_vips, get_local_vips, \
                 set_vips, vip_isexist, vip_del
 from samba import samba_start, samba_stop
 from etcd_manage import Etcd_manage
-from redisd import Redisd
 from cluster_conf import ClusterConf
-from minio import Minio
 
 class Node:
     def __init__(self, config=None):
@@ -43,6 +41,8 @@ class Node:
         for role in self.config.roles:
             #print (role, self.config.roles)
             role_dir = os.path.join(self.config.workdir, role)
+
+            """
             ls = sorted(os.listdir(role_dir))
             for i in ls:
                 try:
@@ -51,16 +51,17 @@ class Node:
                     derror("bad path %s/%s" % (role_dir, i))
                     raise Exp(errno.EIO, '%s' % (i))
                     continue
+            """
 
-                instences.append(Instence(role, i, self.config))
+            instences.append(Instence(role, 0, self.config))
 
-        #instences.append(Instence("uss_nfs", -1, self.config))
+        #instences.append(Instence("uss_frctl", -1, self.config))
         #instences.append(Instence("uss_iscsi", -1, self.config))
         #instences.append(Instence("uss_ftp", -1, self.config))
         return instences
 
     def _get_services(self, host):
-        #return services = {"cds": [], "mond": []}
+        #return services = {"cds": [], "mdctl": []}
         services = {}
         for role in self.config.roles:
             path = os.path.join(self.config.workdir, role)
@@ -71,61 +72,16 @@ class Node:
         return services
 
     def _start_service(self):
-        #derror("samba, nfs-ganesha start unimplemented")
-        #minio = Minio()
-        #minio.start()
+        #derror("samba, frctl-ganesha start unimplemented")
         return
-        #start nfs service
-        _exec_nfs = "systemctl start nfs-ganesha"
-        exec_shell(_exec_nfs, p=True)
+        #start frctl service
+        _exec_frctl = "systemctl start frctl-ganesha"
+        exec_shell(_exec_frctl, p=True)
 
         #start samba service
         _exec_samba = "systemctl start uss_samba"
         exec_shell(_exec_samba, p=True)
 
-    def _init_redis(self):
-        redis = self.config.service["redis"]
-        if (redis == None):
-            return
-        
-        #print (self.config.redis_dir, redis)
-
-        for i in redis:
-            cmd = "mkdir -p %s/%s" % (self.config.redis_dir, i)
-            os.system(cmd)
-
-        lst = os.listdir(self.config.redis_dir)
-
-        for i in lst:
-            #path = os.path.join(self.config.redis_dir, str(i))
-            #dmsg("init redis " + path)
-            #redisd = Redisd(path)
-            #redisd.init()
-            
-            cmd = "python2 %s --init %s/%s > %s/log/redis_disk_%s.log 2>&1" % (self.config.uss_redisd, self.config.redis_dir, i, self.config.home, i)
-            (out, err) = exec_shell(cmd, p=False, need_return=True)
-
-    def _start_redis(self):
-        lst = os.listdir(self.config.redis_dir)
-
-        for i in lst:
-            cmd = "python2 %s --start %s/%s" % (self.config.uss_redisd, self.config.redis_dir, i)
-            os.system(cmd)
-
-    def _restart_redis(self):
-        lst = os.listdir(self.config.redis_dir)
-
-        for i in lst:
-            cmd = "python2 %s --restart %s/%s" % (self.config.uss_redisd, self.config.redis_dir, i)
-            os.system(cmd)
-
-            
-    def _stop_redis(self):
-        lst = os.listdir(self.config.redis_dir)
-
-        for i in lst:
-            cmd = "python2 %s --stop %s/%s" % (self.config.uss_redisd, self.config.redis_dir, i)
-            os.system(cmd)
             
     def start(self, role=None, service=None, op="all"):
         lfile = "/var/run/uss.start.lock"
@@ -142,8 +98,6 @@ class Node:
         cmd = "systemctl start etcd"
         os.system(cmd)
 
-        self._start_redis()
-        
         if (service is not None) and (role is not None):
             i = Instence(role, service, self.config)
             return i.start(self.ttyonly)
@@ -165,16 +119,10 @@ class Node:
         lfile = "/var/run/uss.start.lock"
         lock = lock_file(lfile)
 
-        self._restart_redis()
-
         #stop 
         if (service is not None) and (role is not None):
             i = Instence(role, service, self.config)
             return i.stop(self.ttyonly)
-
-        #first stop minio srevice
-        #minio = Minio()
-        #minio.stop()
 
         def instance_stop_warp(i):
             i.stop(self.ttyonly)
@@ -210,10 +158,6 @@ class Node:
             i = Instence(role, service, self.config)
             return i.stop(self.ttyonly)
 
-        #first stop minio srevice
-        #minio = Minio()
-        #minio.stop()
-
         def instance_stop_warp(i):
             i.stop(self.ttyonly)
 
@@ -222,16 +166,14 @@ class Node:
         mutil_exec(instance_stop_warp, args)
         unset_crontab()
 
-        derror("samba, nfs stop unimplemented")
+        #derror("samba, ganesha stop unimplemented")
         """
         _exec_samba = "systemctl stop uss_samba"
         exec_shell(_exec_samba)
 
-        _exec_nfs = "systemctl stop nfs-ganesha"
-        exec_shell(_exec_nfs)
+        _exec_frctl = "systemctl stop frctl-ganesha"
+        exec_shell(_exec_frctl)
         """
-        self._stop_redis()
-
         os.system("rm " + lfile)
         
     def _construct_dict(self, i):
@@ -291,7 +233,7 @@ class Node:
         exec_shell(cmd)
 
     def is_master(self):
-        cmd = """etcdctl get /sdfs/mond/master | awk -F',' '{print $1}'"""
+        cmd = """etcdctl get /sdfs/mds/master | awk -F',' '{print $1}'"""
         master, _ = exec_shell(cmd, p=False, need_return=True, timeout=7)
         master = master.strip()
 
@@ -305,36 +247,6 @@ class Node:
 
         return False
 
-    def _objck_leveldb(self, check_flag=None):
-        #先杀死前一个执行, 避免重复执行
-        n = os.path.basename(self.config.uss_lobjck)
-        cmd = "pkill -9 %s" % (n)
-        try:
-            exec_shell(cmd)
-        except Exp, e:
-            pass
-
-        if self.is_master():
-            self.objck_nolock(check_flag)
-        else:
-            dwarn("need run with master!")
-
-
-
-    def _objck_redis(self, check_flag=None):
-        #先杀死前一个执行, 避免重复执行
-        n = os.path.basename(self.config.uss_robjck)
-        cmd = "pkill -9 %s" % (n)
-        try:
-            exec_shell(cmd)
-        except Exp, e:
-            pass
-
-        if self.is_master():
-            self.objck_nolock(check_flag)
-        else:
-            dwarn("need run with master!")
-
     def _get_cluster_disk_info(self):
         cluster_disk_info = []
         node_disk_info = ()
@@ -346,7 +258,7 @@ class Node:
                 if y:
                     print y
                 for line in x.split('\n'):
-                    if "cds" in line and "running" in line:
+                    if "bactl" in line and "running" in line:
                         nid = line.split(' ')[2]
                         rate = int(line.split(' ')[4].split('%')[0])
                         node_disk_info = (h, nid, rate)
@@ -562,8 +474,7 @@ class Node:
             pass
 
         tasks = [("app/admin/node.py", "app/bin/uss.node"),
-                 ("app/admin/cluster.py", "app/bin/uss.cluster"),
-                 ("app/admin/minio.py", "app/bin/uss.minio")]
+                 ("app/admin/cluster.py", "app/bin/uss.cluster")]
         for t in tasks:
             target = os.path.join(self.config.home, t[0])
             link_name = os.path.join(self.config.home, t[1])
@@ -593,8 +504,7 @@ class Node:
 
         tasks = [("app/admin/node.py", "app/bin/sdfs.node"),
                  ("app/admin/sdfs.py", "app/bin/sdfs"),
-                 ("app/admin/cluster.py", "app/bin/sdfs.cluster"),
-                 ("app/admin/minio.py", "app/bin/sdfs.minio")]
+                 ("app/admin/cluster.py", "app/bin/sdfs.cluster")]
         for t in tasks:
             target = os.path.join(self.config.home, t[0])
             link_name = os.path.join(self.config.home, t[1])
@@ -608,37 +518,16 @@ class Node:
             link_name = os.path.join(link_path, t)
             exec_shell("ln -sf %s %s" % (target, link_name), p=False)
 
-    def _init_cds(self):
-        cds = self.config.service["cds"]
-        if (cds == None):
-            return
-
-        for i in cds:
-            cmd = "mkdir -p %s/data/cds/%s" % (self.config.home, i)
-            os.system(cmd)
-
-    def _init_gateway(self, gateway):
-        for i in gateway:
-            try:
-                #print (i, self.config.service)
-                s = self.config.service[i]
-                cmd = "mkdir -p %s/data/%s/0" % (self.config.home, i)
-                os.system(cmd)
-            except:
-                pass
-
-    
-            
     def env_init(self):
         self.ln()
-        install_init(self.config.home)
+        #install_init(self.config.home)
 
         os.system("iptables -F")
         os.system("mkdir -p %s/log" % (self.config.home))
-        self._init_redis()
-        self._init_cds()
-        self._init_gateway(["nfs", "ftp"])
-        self._start_redis()
+        cmd = "mkdir -p %s/data/bactl" % (self.config.home)
+        os.system(cmd)
+        cmd = "mkdir -p %s/data/frctl" % (self.config.home)
+        os.system(cmd)
 
     def _check_disk_available(self, dev, force=False):
         devs = dev_lsblks()
@@ -708,9 +597,8 @@ class Node:
             fstab_del_mount(mountpoint)
             raise
 
-    def mond_init(self, idx):
-        cmd = '%s --init -n %s' % (self.config.uss_mond, idx)
-        exec_shell(cmd)
+    def mdctl_init(self, idx):
+        return
 
     def _get_new_idx(self, role):
         role_dir = os.path.join(self.config.workdir, role)
@@ -732,14 +620,14 @@ class Node:
             put_remote(h, src, dist)
 
     def _add_check_cluster_conf(self, cluster):
-        mond = 0
+        mdctl = 0
         for h in cluster.keys():
-            mond = mond + len(cluster[h]["mond"])
-        if mond == 0:
-            raise Exp(1, "not found mond %s" % (cluster))
+            mdctl = mdctl + len(cluster[h]["mdctl"])
+        if mdctl == 0:
+            raise Exp(1, "not found mdctl %s" % (cluster))
 
         for h in cluster.keys():
-            if (len(cluster[h]['mond']) + len(cluster[h]["cds"])) == 0:
+            if (len(cluster[h]['mdctl']) + len(cluster[h]["bactl"])) == 0:
                 raise Exp(1, "not found service in %s,\n %s" % (h, cluster))
 
     def _add_update_cluster_conf(self, hosts):
@@ -850,7 +738,7 @@ class Node:
             f.write("%s\n" % (tier_num))
 
     def disk_add(self, dev, role, idx=None, force=False):
-        #UUID=xxx /sysy/yfs/cds/0 ext4 user_xattr,noatime,defaults 0 0
+        #UUID=xxx /sysy/yfs/bactl/0 ext4 user_xattr,noatime,defaults 0 0
         idx_list = os.listdir(os.path.join(self.config.workdir, role))
         if idx is None:
             idx = self._get_new_idx(role)
@@ -1465,10 +1353,10 @@ class Node:
         try:
 	    self.disk_manage.raid_load()
             if r:
-                role = "cds"
+                role = "bactl"
                 for idx in os.listdir(os.path.join(self.config.workdir, role)):
                     if not self._disk_iswriteable(role, idx):
-                        cmd = "ps -ef | grep 'uss_cds -n %s$' | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null" % (idx)
+                        cmd = "ps -ef | grep 'uss_bactl -n %s$' | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null" % (idx)
                         cmd = cmd + "; sleep 1; umount %s/%s/%s -l" % (self.config.workdir, role, idx)
                         try:
                             exec_shell(cmd)
@@ -1518,7 +1406,7 @@ if __name__ == "__main__":
         node = Node()
         node.start(args.role, args.service, args.op)
     parser_start = subparsers.add_parser('start', help='start services')
-    parser_start.add_argument("--role", default=None, help="", choices=["cds", "mond"])
+    parser_start.add_argument("--role", default=None, help="", choices=["bactl", "mdctl"])
     parser_start.add_argument("--service", default=None, type=int, help="the id of service")
     parser_start.add_argument("--op", default="all", help="simple or all")
     parser_start.set_defaults(func=_start)
@@ -1527,7 +1415,7 @@ if __name__ == "__main__":
         node = Node()
         node.restart(args.role, args.service, args.op)
     parser_restart = subparsers.add_parser('restart', help='restart services')
-    parser_restart.add_argument("--role", default=None, help="", choices=["cds", "mond"])
+    parser_restart.add_argument("--role", default=None, help="", choices=["bactl", "mdctl"])
     parser_restart.add_argument("--service", default=None, type=int, help="the id of service")
     parser_restart.add_argument("--op", default="all", help="simple or all")
     parser_restart.set_defaults(func=_restart)
@@ -1536,7 +1424,7 @@ if __name__ == "__main__":
         node = Node()
         node.stop(args.role, args.service)
     parser_stop = subparsers.add_parser('stop', help='stop services')
-    parser_stop.add_argument("--role", default=None, help="", choices=["cds", "mond"])
+    parser_stop.add_argument("--role", default=None, help="", choices=["bactl", "mdctl"])
     parser_stop.add_argument("--service", default=None, type=int, help="the id of service")
     parser_stop.set_defaults(func=_stop)
 
@@ -1559,12 +1447,12 @@ if __name__ == "__main__":
     parser_stat  = subparsers.add_parser('stat', help='the stat of node')
     parser_stat.set_defaults(func=_stat)
 
-    def _mond_init(args):
+    def _mdctl_init(args):
         node = Node()
-        node.mond_init(args.service)
-    parser_mond_init = subparsers.add_parser('mond_init', help='make mond init')
-    parser_mond_init.add_argument("--service", required=True, type=int, help="the idx of mond")
-    parser_mond_init.set_defaults(func=_mond_init)
+        node.mdctl_init(args.service)
+    parser_mdctl_init = subparsers.add_parser('mdctl_init', help='make mdctl init')
+    parser_mdctl_init.add_argument("--service", required=True, type=int, help="the idx of mdctl")
+    parser_mdctl_init.set_defaults(func=_mdctl_init)
 
     def _env_init(args):
         node = Node()
@@ -1730,7 +1618,7 @@ if __name__ == "__main__":
         node.disk_add(args.disk, args.role, args.service, args.force)
     parser_disk_add = subparsers.add_parser('disk_add', help='add disk')
     parser_disk_add.add_argument("--disk", required=True, help="disk")
-    parser_disk_add.add_argument("--role", default="cds", help="[cds|mond]", choices=["cds", "mond"])
+    parser_disk_add.add_argument("--role", default="bactl", help="[bactl|mdctl]", choices=["bactl", "mdctl"])
     parser_disk_add.add_argument("--service", default=None, type=int, help="the idx of service")
     parser_disk_add.add_argument("--force", action='store_true', help="force to do")
     parser_disk_add.set_defaults(func=_disk_add)

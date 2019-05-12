@@ -25,6 +25,23 @@ def fail_exit(msg):
     os.system('for pid in `ps -ef | grep "objck" | grep -v grep | cut -c 9-15`; do kill -9 $pid; done')
     os.system('kill -9 ' + str(os.getpid()))
 
+def create_disk_fs(pool):
+    os.system("sdfs disk add --pool %s --driver filesystem --device fake" % (pool))
+
+def create_disk_block(pool, idx):
+    disk_size = 1024 * 1024 * 1024 * 10
+    page_size = 1024 * 1024 * 4
+    disk_name = "%s/data/bactl/%s.fake_disk" % (TEST_PATH, idx)
+    os.system("mkdir -p %s/bactl" % (TEST_PATH))
+    os.system("truncate %s -s %d" % (disk_name, disk_size))
+    os.system("sdfs disk add --pool %s --driver raw_aio --device %s --page_size %d" % (pool, disk_name, page_size))
+
+def mkpool(pool):
+    os.system("sdfs mkpool %s" % (pool))
+    for i in range(7):
+        #create_disk_fs(pool)
+        create_disk_block(pool, i)
+   
 def test_coredump():
     """
     检查是否有core产生, 如果有就exit
@@ -290,6 +307,7 @@ def main():
     elif (t == 'attr'):
         target = test_mkdir(config, "/testattr")
         test.append(Attr_test(target, length))
+
     elif (t == 'ec'):
         target = test_mkdir(config, "/testdir_ec", ec)
         test.append(Dir_test(target, length, config))
@@ -297,30 +315,33 @@ def main():
         test.append(File_test(target, length, config))
 
     elif (t == 'all'):
-        target = test_mkdir(config, "/testdir")
-        test.append(Dir_test(target, length, config))
-
+        mkpool("testfile")
+        
         target = test_mkdir(config, "/testfile")
         test.append(File_test(target, length, config))
+
+        """
+        target = test_mkdir(config, "/testdir")
+        test.append(Dir_test(target, length, config))
 
         target = test_mkdir(config, "/testattr")
         test.append(Attr_test(target, length, config))
 
-        #测试小文件，小文件会放在leveldb中
         target = test_mkdir(config, "/small")
         target = test_mkdir(config, "/small/testfile")
         test.append(File_test(target, length, config))
-
         """
+
         derror("ec test disabled")
-        """
 
+        """
         target = test_mkdir(config, "/testdir_ec", ec)
         test.append(Dir_test(target, length, config))
 
         target = test_mkdir(config, "/testfile_ec", ec)
         test.append(File_test(target, length, config))
         target = test_mkdir(config, "/small/testfile_ec", ec)
+        """
 
     else:
         assert False, 'oops, unhandled option: %s, -h for help' % t

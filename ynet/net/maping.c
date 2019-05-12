@@ -364,8 +364,10 @@ static int __maping_getmaster__(nid_t *nid)
         etcd_lock_t lock;
         uint32_t magic;
         char host[MAX_NAME_LEN];
+        char key[MAX_PATH_LEN];
 
-        ret = etcd_lock_init(&lock, ROLE_MOND, "master", gloconf.rpc_timeout, -1, -1);
+        snprintf(key, MAX_NAME_LEN, "%s/master", ROLE_MDCTL);
+        ret = etcd_lock_init(&lock, ETCD_INSTANCE, key, gloconf.rpc_timeout, -1, -1);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -401,7 +403,7 @@ static int __maping_getmaster(nid_t *nid)
         char nidstr[MAX_NAME_LEN];
 
 retry:
-        ret = maping_get(ROLE_MOND, "master", nidstr, &ctime);
+        ret = maping_get(ROLE_MDCTL, "master", nidstr, &ctime);
         if (unlikely(ret)) {
                 DBUG("get master fail\n");
 
@@ -410,7 +412,7 @@ retry:
                         GOTO(err_ret, ret);
 
                 nid2str(nidstr, nid);
-                ret = maping_set(ROLE_MOND, "master", nidstr);
+                ret = maping_set(ROLE_MDCTL, "master", nidstr);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         } else {
@@ -418,7 +420,7 @@ retry:
                 if (ctime + gloconf.rpc_timeout / 2 < now || ctime > now) {
                         YASSERT(retry == 0);
                         DBUG("update master\n");
-                        maping_drop(ROLE_MOND, "master");
+                        maping_drop(ROLE_MDCTL, "master");
                         retry = 1;
                         goto retry;
                 } else {

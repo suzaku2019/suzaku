@@ -1,6 +1,21 @@
 #ifndef __CHK_PROTO_H__
 #define __CHK_PROTO_H__
 
+
+#pragma pack(8)
+
+typedef enum {
+        CHKOP_WRITE = 1,
+        CHKOP_READ = 2,
+        CHKOP_DEL = 3,
+        CHKOP_TRUNC = 4,
+} chkop_type_t;
+
+#pragma pack(0)
+
+#define YFS_CRC_SEG_LEN (8192 * 8)
+
+#if 0
 #include <stdint.h>
 
 #include "configure.h"
@@ -20,19 +35,6 @@
 
 #define YFS_CHK_LEN_MAX   (sizeof(char) * 1024 * 1024 * 64)     /* 64MB */
 
-#define YFS_CRC_SEG_LEN (8192 * 8)
-
-#if 0
-
-#define YFS_CHK_LEN_DEF   (sizeof(char) * 1024 * 1024 * 4)     /* 4MB */
-
-#else
-
-#define YFS_CHK_LEN_DEF   (sizeof(char) * 1024 * 1024 * 64)     /* 64MB */
-
-#endif
-
-
 #define YFS_CDS_CRC_COUNT (YFS_CHK_LEN_MAX / YFS_CRC_SEG_LEN) 
 #define YFS_CDS_CRC_LEN (YFS_CDS_CRC_COUNT * sizeof(uint32_t))
 
@@ -40,8 +42,9 @@
 
 typedef enum {
         CHKOP_WRITE = 1,
-        CHKOP_DEL = 2,
-        CHKOP_TRUNC = 3,
+        CHKOP_READ = 2,
+        CHKOP_DEL = 3,
+        CHKOP_TRUNC = 4,
 } chkop_type_t;
 
 typedef struct {
@@ -69,4 +72,5 @@ typedef struct {
 
 #pragma pack()
 
+#endif
 #endif

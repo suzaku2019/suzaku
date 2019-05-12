@@ -13,11 +13,7 @@
 #ifdef PLOCK_NEW
 
 typedef struct {
-        //pthread_rwlock_t lock;
-
-
         struct list_head queue;
-
         int writer;
         int readers;
         uint32_t priority;

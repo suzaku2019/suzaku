@@ -23,7 +23,7 @@ static int __kv_remove(kv_ctx_t *ctx, const char *key)
 
         DBUG("remove %s\n", key);
         
-        ret = hash_table_remove(ctx->tab, (void *)key, (void **)&ent);
+        ret = htab_remove(ctx->tab, (void *)key, (void **)&ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -57,7 +57,7 @@ static int __kv_create(kv_ctx_t *ctx, const char *key, const void *value, int va
         ent->valuelen = valuelen;
         ent->timeout = gettime() + ttl;
         
-        ret = hash_table_insert(ctx->tab, (void *)ent, ent->key, 0);
+        ret = htab_insert(ctx->tab, (void *)ent, ent->key, 0);
         if (ret)
                 UNIMPLEMENTED(__DUMP__);
 
@@ -109,7 +109,7 @@ int kv_set(kv_ctx_t *ctx, const char *key, const void *value, int valuelen, int 
         int ret;
         entry_t *ent;
 
-        ent = hash_table_find(ctx->tab, (void *)key);
+        ent = htab_find(ctx->tab, (void *)key);
         if (ent) {
                 ret = __kv_update(ctx, ent, key, value, valuelen, flag, ttl);
                 if (unlikely(ret))
@@ -141,7 +141,7 @@ int kv_get(kv_ctx_t *ctx, const char *key, void *value, int *valuelen)
         entry_t *ent;
 
         DBUG("get %s\n", key);
-        ent = hash_table_find(ctx->tab, (void *)key);
+        ent = htab_find(ctx->tab, (void *)key);
         if (ent == NULL) {
                 ret = ENOENT;
                 GOTO(err_ret, ret);
@@ -195,7 +195,7 @@ int kv_create(kv_ctx_t **_ctx)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ctx->tab = hash_create_table(__kv_cmp, __kv_hash, "kv");
+        ctx->tab = htab_create(__kv_cmp, __kv_hash, "kv");
         if (ctx->tab == NULL) {
                 ret = ENOMEM;
                 GOTO(err_ret, ret);
@@ -243,11 +243,11 @@ void kv_destory(kv_ctx_t *ctx)
                 YASSERT(ret == 0);
         }
 
-        hash_destroy_table(ctx->tab, NULL, NULL);
+        htab_destroy(ctx->tab, NULL, NULL);
         yfree((void **)&ctx);
 }
 
 void kv_iterator(kv_ctx_t *ctx, func1_t func, void *arg)
 {
-        hash_iterate_table_entries(ctx->tab, func, arg);
+        htab_iterate(ctx->tab, func, arg);
 }

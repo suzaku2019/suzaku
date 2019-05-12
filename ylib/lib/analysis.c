@@ -48,7 +48,7 @@ static int __analysis_count(analysis_t *ana, const char *name, uint64_t _time)
                         GOTO(err_ret, ret);
         }
 
-        ent = hash_table_find(ana->tab, (void *)name);
+        ent = htab_find(ana->tab, (void *)name);
         if (ent == NULL) {
                 ret = ymalloc((void **)&ent, sizeof(entry_t));
                 if (unlikely(ret))
@@ -60,7 +60,7 @@ static int __analysis_count(analysis_t *ana, const char *name, uint64_t _time)
                 ent->count = 1;
                 ent->prev = gettime();
 
-                ret = hash_table_insert(ana->tab, (void *)ent, ent->name, 0);
+                ret = htab_insert(ana->tab, (void *)ent, ent->name, 0);
                 if (unlikely(ret))
                         GOTO(err_lock, ret);
         } else {
@@ -175,7 +175,7 @@ int __analysis_dump1(analysis_t *ana)
                 GOTO(err_ret, ret);
 
         DINFO("begin {{{\n");
-        hash_iterate_table_entries(ana->tab, __analysis, ana->name);
+        htab_iterate(ana->tab, __analysis, ana->name);
         DINFO("}}} \n");
 
         sy_spin_unlock(&ana->tab_lock);
@@ -357,7 +357,7 @@ int analysis_create(analysis_t **_ana, const char *_name, int private)
         snprintf(name, MAX_NAME_LEN, "%s", _name);
         strncpy(ana->name, name, MAX_NAME_LEN);
 
-        ana->tab = hash_create_table(__analysis_cmp, __analysis_key, name);
+        ana->tab = htab_create(__analysis_cmp, __analysis_key, name);
         if (ana->tab == NULL) {
                 ret = ENOMEM;
                 DERROR("ret (%d) %s\n", ret, strerror(ret));
@@ -496,7 +496,7 @@ int analysis_dump(const char *tab, const char *name,  char *buf)
                         if (unlikely(ret))
                                 GOTO(err_lock, ret);
 
-                        hash_iterate_table_entries(ana->tab, __analysis_dump2, &arg);
+                        htab_iterate(ana->tab, __analysis_dump2, &arg);
 
                         sy_spin_unlock(&ana->tab_lock);
                         //__analysis_dump1(ana);
@@ -532,7 +532,7 @@ void analysis_merge(void *ctx)
 
 static void __analysis_destroy(analysis_t *ana)
 {
-        hash_destroy_table(ana->tab, NULL, NULL);
+        htab_destroy(ana->tab, NULL, NULL);
         yfree((void **)&ana->queue);
         yfree((void **)&ana->new_queue);
         yfree((void **)&ana);

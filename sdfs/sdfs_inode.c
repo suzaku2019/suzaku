@@ -17,8 +17,6 @@
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
-#include "yfs_file.h"
-#include "cache.h"
 #include "schedule.h"
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
@@ -49,7 +47,7 @@ int sdfs_getattr(sdfs_ctx_t *ctx, const fileid_t *fileid, struct stat *stbuf)
                 GOTO(err_ret, ret);
         }
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_getattr(&volid, fileid, md);
         if (ret) {
@@ -97,7 +95,7 @@ int sdfs_rename(sdfs_ctx_t *ctx, const fileid_t *fparent, const char *fname,
                         GOTO(err_ret, ret);
         }
 
-        volid_t volid = {fparent->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fparent->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_rename(&volid, fparent, fname, tparent, tname);
         if (ret) {
@@ -137,7 +135,7 @@ int sdfs_chown(sdfs_ctx_t *ctx, const fileid_t *fileid, uid_t uid, gid_t gid)
         }
 #endif
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_chown(&volid, fileid, uid, gid);
         if (ret) {
@@ -160,7 +158,7 @@ int sdfs_utime(sdfs_ctx_t *ctx, const fileid_t *fileid, const struct timespec *a
         int ret, retry = 0;
 
         (void) ctx;
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_utime(&volid, fileid, atime, mtime, ctime);
         if (ret) {
@@ -193,7 +191,7 @@ int sdfs_chmod(sdfs_ctx_t *ctx, const fileid_t *fileid, mode_t mode)
         }
 #endif
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_chmod(&volid, fileid, mode);
         if (ret) {
@@ -215,7 +213,7 @@ int sdfs_childcount(sdfs_ctx_t *ctx, const fileid_t *fileid, uint64_t *count)
 
         (void) ctx;
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_childcount(&volid, fileid, count);
         if (ret) {
@@ -248,7 +246,7 @@ int sdfs_setattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const setattr_t *setat
         }
 #endif
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_setattr(&volid, fileid, setattr, force);
         if (ret) {

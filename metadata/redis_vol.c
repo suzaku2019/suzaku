@@ -17,7 +17,7 @@
 
 typedef struct {
         pthread_rwlock_t lock;
-        hashtable_t tab;
+        htab_t tab;
 } vol_tab_t;
 
 static vol_tab_t *__vol_tab__;
@@ -36,7 +36,7 @@ static vol_tab_t *__redis_vol_self()
 #if 1
 static uint32_t __key (const void *_key)
 {
-        return ((volid_t *)_key)->volid;
+        return ((volid_t *)_key)->poolid;
 }
 
 static int __cmp(const void *_v1, const void *_v2)
@@ -44,12 +44,12 @@ static int __cmp(const void *_v1, const void *_v2)
         const entry_t *ent = (entry_t *)_v1;
         const volid_t *v1, *v2;
 
-        v1 = &ent->volid;
+        v1 = &ent->poolid;
         v2 = (volid_t *)_v2;
 
         //DINFO("%d --> %d\n", v1, v2);
 
-        uint64_t r = v1->volid - v2->volid;
+        uint64_t r = v1->poolid - v2->poolid;
         if (r)
                 return r;
         else
@@ -70,7 +70,7 @@ int __redis_vol_init(vol_tab_t **_vol_tab)
         if(ret)
                 GOTO(err_ret, ret);
 
-        vol_tab->tab = hash_create_table(__cmp, __key, "vol_tab");
+        vol_tab->tab = htab_create(__cmp, __key, "vol_tab");
         if(ret)
                 GOTO(err_ret, ret);
 
@@ -129,7 +129,7 @@ void redis_vol_private_destroy(func_t func)
         if(ret)
                 UNIMPLEMENTED(__WARN__);
 
-        hash_destroy_table(vol_tab->tab, __redis_vol_private_destroy, func);
+        htab_destroy(vol_tab->tab, __redis_vol_private_destroy, func);
 
         pthread_rwlock_unlock(&vol_tab->lock);
 
@@ -151,7 +151,7 @@ int redis_vol_get(const volid_t *volid, void **conn)
         if(ret)
                 GOTO(err_ret, ret);
         
-        ent = hash_table_find(vol_tab->tab, (void *)volid);
+        ent = htab_find(vol_tab->tab, (void *)volid);
         if (ent == NULL) {
                 ret = ENOENT;
                 GOTO(err_lock, ret);
@@ -190,9 +190,9 @@ int redis_vol_insert(const volid_t *volid, void *conn)
                 GOTO(err_lock, ret);
 
         ent->vol = conn;
-        ent->volid = *volid;
+        ent->poolid = *volid;
         
-        ret = hash_table_insert(vol_tab->tab, ent, (void *)volid, 0);
+        ret = htab_insert(vol_tab->tab, ent, (void *)volid, 0);
         if (ret) {
                 GOTO(err_free, ret);
         }

@@ -15,6 +15,7 @@
 #include "sdfs_quota.h"
 #include "sdfs_conf.h"
 #include "sdfs_share.h"
+#include "sdfs_macro.h"
 #include "sdfs_worm.h"
 
 typedef struct {
@@ -161,10 +162,10 @@ typedef struct {
 
 /* yfs_lib.c */
 int sdfs_init_verbose(const char *name, int redis_conn);
-int sdfs_init(const char *name);
+int sdfs_init(const char *name, int polling_core);
 int sdfs_connect(const char *vol, sdfs_ctx_t **ctx);
 void sdfs_disconnect(sdfs_ctx_t *ctx);
-int sdfs_mkvol(const char *name, const ec_t *ec, mode_t mode, fileid_t *_fileid);
+int sdfs_mkpool(const char *name, const ec_t *ec, mode_t mode, fileid_t *_fileid);
 
 //dir
 void sdfs_closedir(sdfs_ctx_t *ctx, dirhandler_t *dirhandler);
@@ -182,7 +183,7 @@ int sdfs_readdirplus_with_filter(sdfs_ctx_t *ctx, const fileid_t *fileid, off_t 
                                  void **de, int *delen, const filter_t *filter);
 int sdfs_readdirplus(sdfs_ctx_t *ctx, const fileid_t *fileid, off_t offset, void **de, int *delen);
 int sdfs_lookup_recurive(const char *path, fileid_t *fileid);
-int sdfs_lookupvol(const char *name, fileid_t *fileid);
+int sdfs_getpool(const char *name, fileid_t *fileid);
 int sdfs_splitpath(const char *path, fileid_t *parent, char *basename);
 int sdfs_lookup(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name, fileid_t *fileid);
 
@@ -209,6 +210,7 @@ int sdfs_link2node(sdfs_ctx_t *ctx, const fileid_t *old, const fileid_t *, const
 int sdfs_unlink(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name);
 int sdfs_setlock(sdfs_ctx_t *ctx, const fileid_t *fileid, const sdfs_lock_t *lock);
 int sdfs_getlock(sdfs_ctx_t *ctx, const fileid_t *fileid, sdfs_lock_t *lock);
+int sdfs_localize(const fileid_t *fileid);
 
 
 //node
@@ -220,7 +222,7 @@ int sdfs_utime(sdfs_ctx_t *ctx, const fileid_t *fileid, const struct timespec *a
                const struct timespec *mtime, const struct timespec *ctime);
 
 //xattr
-int sdfs_getxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name, void *value, size_t *size);
+int sdfs_getxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name, void *value, size_t *sixbze);
 int sdfs_removexattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name);
 int sdfs_listxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, char *list, size_t *size);
 int sdfs_setxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name, const void *value,

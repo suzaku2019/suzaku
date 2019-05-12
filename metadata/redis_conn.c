@@ -37,7 +37,7 @@ static int __redis_connect(const char *volume, int sharding, int magic, __conn_t
         if(ret) {
                 if (ret == ENOENT) {
                 retry:
-                        ret = etcd_get_text(ETCD_VOLUME, key, addr, NULL);
+                        ret = etcd_get_text(ETCD_POOL, key, addr, NULL);
                         if(ret) {
                                 DBUG("%s not found\n", key);
                                 GOTO(err_ret, ret);
@@ -148,10 +148,10 @@ static int __redis_vol_connect(const volid_t *volid, const char *volume, int sha
         if(ret)
                 GOTO(err_ret, ret);
 
-        DINFO("connect to vol %d, sharding %u\n", volid->volid, sharding);
+        DINFO("connect to vol %d, sharding %u\n", volid->poolid, sharding);
         
         vol->sharding = sharding;
-        vol->volid = *volid;
+        vol->poolid = *volid;
         strcpy(vol->volume, volume);
 
         YASSERT(vol->sharding);
@@ -273,7 +273,7 @@ int redis_conn_get(const volid_t *volid, int sharding, uint32_t worker,
         if(ret)
                 GOTO(err_lock, ret);
 
-        handler->volid = *volid;
+        handler->poolid = *volid;
         
         pthread_rwlock_unlock(&vol->lock);
         redis_vol_release(volid);
@@ -329,7 +329,7 @@ int redis_conn_release(const redis_handler_t *handler)
         int ret;
         redis_vol_t *vol;
 
-        ret = __redis_vol_get(&handler->volid, &vol, 0);
+        ret = __redis_vol_get(&handler->poolid, &vol, 0);
         if(ret)
                 GOTO(err_ret, ret);
         
@@ -342,7 +342,7 @@ int redis_conn_release(const redis_handler_t *handler)
                 GOTO(err_lock, ret);
 
         pthread_rwlock_unlock(&vol->lock);
-        redis_vol_release(&handler->volid);
+        redis_vol_release(&handler->poolid);
 
         DBUG("release vol (%d,%d)\n", handler->sharding, handler->idx);
         
@@ -350,7 +350,7 @@ int redis_conn_release(const redis_handler_t *handler)
 err_lock:
         pthread_rwlock_unlock(&vol->lock);
 err_release:
-        redis_vol_release(&handler->volid);
+        redis_vol_release(&handler->poolid);
 err_ret:
         return ret;
 }
@@ -450,7 +450,7 @@ int redis_conn_close(const redis_handler_t *handler)
         int ret;
         redis_vol_t *vol;
  
-        ret = __redis_vol_get(&handler->volid, &vol, 0);
+        ret = __redis_vol_get(&handler->poolid, &vol, 0);
         if(ret)
                 GOTO(err_ret, ret);
                
@@ -463,13 +463,13 @@ int redis_conn_close(const redis_handler_t *handler)
                 GOTO(err_lock, ret);
         
         pthread_rwlock_unlock(&vol->lock);
-        redis_vol_release(&handler->volid);
+        redis_vol_release(&handler->poolid);
         
         return 0;
 err_lock:
         pthread_rwlock_unlock(&vol->lock);
 err_release:
-        redis_vol_release(&handler->volid);
+        redis_vol_release(&handler->poolid);
 err_ret:
         return ret;
 }
@@ -495,7 +495,7 @@ static int __redis_vol_getnamebyid(const volid_t *_volid,
         char key[MAX_NAME_LEN], value[MAX_BUF_LEN], id[MAX_NAME_LEN], buf[MAX_BUF_LEN];
         etcd_node_t *array, *node;
 
-        snprintf(id, MAX_NAME_LEN, "%ju_%ju", _volid->volid, _volid->snapvers);
+        snprintf(id, MAX_NAME_LEN, "%ju_%ju", _volid->poolid, _volid->snapvers);
         ret = maping_get(ID2NAME, id, buf, NULL);
         if(ret) {
                 if (ret == ENOENT) {
@@ -509,7 +509,7 @@ static int __redis_vol_getnamebyid(const volid_t *_volid,
                 goto out;
         }
         
-        ret = etcd_list(ETCD_VOLUME, &array);
+        ret = etcd_list(ETCD_POOL, &array);
         if(ret)
                 GOTO(err_ret, ret);
 
@@ -519,7 +519,7 @@ static int __redis_vol_getnamebyid(const volid_t *_volid,
 
                 snprintf(key, MAX_NAME_LEN, "%s/volid", name);
                 DBUG("key %s\n", key);
-                ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+                ret = etcd_get_text(ETCD_POOL, key, value, NULL);
                 if(ret)
                         continue;
 
@@ -527,17 +527,17 @@ static int __redis_vol_getnamebyid(const volid_t *_volid,
 
                 snprintf(key, MAX_NAME_LEN, "%s/snapvers", name);
                 DBUG("key %s\n", key);
-                ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+                ret = etcd_get_text(ETCD_POOL, key, value, NULL);
                 if(ret)
                         continue;
 
                 uint64_t snapvers = atol(value);
                 
-                if (volid == _volid->volid && snapvers == _volid->snapvers) {
+                if (volid == _volid->poolid && snapvers == _volid->snapvers) {
                         strcpy(volume, name);
 
                         snprintf(key, MAX_NAME_LEN, "%s/sharding", name);
-                        ret = etcd_get_text(ETCD_VOLUME, key, value, NULL);
+                        ret = etcd_get_text(ETCD_POOL, key, value, NULL);
                         if(ret)
                                 GOTO(err_free, ret);
 

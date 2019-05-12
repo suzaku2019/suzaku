@@ -24,7 +24,8 @@
 static dirop_t *dirop = &__dirop__;
 static inodeop_t *inodeop = &__inodeop__;
 
-inline static int __md_update_time(const volid_t *volid, const fileid_t *fileid, int at, int mt, int ct)
+inline static int __md_update_time(const volid_t *volid, const fileid_t *fileid,
+                                   int at, int mt, int ct)
 {
         int ret;
         setattr_t setattr;
@@ -35,15 +36,9 @@ inline static int __md_update_time(const volid_t *volid, const fileid_t *fileid,
                             mt ? __SET_TO_SERVER_TIME : __DONT_CHANGE, NULL,
                             ct ? __SET_TO_SERVER_TIME : __DONT_CHANGE, NULL);
 
-#if ENABLE_ATTR_QUEUE
-        ret = attr_queue_settime(volid, fileid, &setattr);
-        if (ret)
-                GOTO(err_ret, ret);
-#else
         ret = inodeop->setattr(volid, fileid, &setattr, 0);
         if (ret)
                 GOTO(err_ret, ret);
-#endif
 
         return 0;
 err_ret:
@@ -294,7 +289,7 @@ int md_lookup(const volid_t *volid, fileid_t *fileid, const fileid_t *parent,
                 *fileid = *parent;
                 return 0;
         } else if (strcmp(name, "..") == 0) {
-                if (parent->type == ftype_vol) {
+                if (parent->type == ftype_pool) {
                         *fileid = *parent;
                         return 0;
                 } else {
@@ -340,9 +335,11 @@ int md_rmdir(const volid_t *volid, const fileid_t *parent, const char *name)
                         GOTO(err_ret, ret);
                 }
 
+#if 0
                 ret = quota_check_dec(&fileid);
                 if (ret)
                         GOTO(err_ret, ret);
+#endif
 
                 ret = inodeop->unlink(volid, &fileid, NULL);
                 if (ret) {
@@ -381,9 +378,11 @@ int md_unlink(const volid_t *volid, const fileid_t *parent, const char *name,
         if (ret)
                 GOTO(err_ret, ret);
 
+#if 0
         ret = quota_check_dec(&fileid);
         if (ret)
                 GOTO(err_ret, ret);
+#endif
 
         md = (void *)buf;
         ret = inodeop->unlink(volid, &fileid, md);
@@ -445,6 +444,7 @@ err_ret:
         return ret;
 }
 
+#if 0
 int md_symlink(const volid_t *volid, const fileid_t *parent, const char *name,
                const char *link_target,
                uint32_t mode, uint32_t uid, uint32_t gid)
@@ -470,6 +470,7 @@ int md_symlink(const volid_t *volid, const fileid_t *parent, const char *name,
 err_ret:
         return ret;
 }
+#endif
 
 int md_readlink(const volid_t *volid, const fileid_t *fileid, char *_buf)
 {

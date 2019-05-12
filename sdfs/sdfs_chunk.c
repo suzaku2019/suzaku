@@ -13,7 +13,7 @@
 #include "net_global.h"
 #include "chk_proto.h"
 #include "net_global.h"
-#include "yfs_file.h"
+#include "net_table.h"
 #include "redis.h"
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
@@ -41,6 +41,7 @@ typedef struct {
         int retval;
 } chunk_write_ctx_t;
 
+#if 0
 inline static void __chunk_recovery(const chkid_t *chkid)
 {
         int ret, retry = 0;
@@ -60,7 +61,7 @@ static int __chunk_load(const fileinfo_t *md, const chkid_t *chkid,
                         chkinfo_t *chkinfo, int repmin, int *_intect)
 {
         int ret, intect = 1, retry = 0;
-        nid_t *nid;
+        reploc_t *reploc;
         uint32_t i;
 
         ANALYSIS_BEGIN(0);
@@ -70,7 +71,7 @@ retry:
         ret = md_chunk_load_check(chkid, chkinfo, repmin);
         if (unlikely(ret)) {
                 if (ret == ENOENT && md) {
-                        ret = md_chunk_create(md, chkid->idx, chkinfo);
+                        ret = md_chunk_create(md, chkid, chkinfo);
                         if (unlikely(ret)) {
                                 if (ret == EEXIST) {
                                         goto retry;
@@ -82,8 +83,8 @@ retry:
         }
 
         for (i = 0; i < chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
-                if (nid->status & __S_DIRTY) {
+                reploc = &chkinfo->diskid[i];
+                if (reploc->status & __S_DIRTY) {
 #if 0
                         intect = 0;
                         break;
@@ -149,9 +150,9 @@ static int __chunk_read_ec(const chkid_t *chkid, buffer_t *buf, int count,
         ec_arg_t ec_arg;
         ec_strip_t *strip;
         buffer_t tmpbuf, tmpbuf2;
-        nid_t *nid;
+        reploc_t *reploc;
         chkinfo_t *chkinfo;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
 
         DINFO("read "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         
@@ -165,11 +166,11 @@ static int __chunk_read_ec(const chkid_t *chkid, buffer_t *buf, int count,
 
         for (i = 0; i < ec_arg.strip_count; i++) {
                 strip = &ec_arg.strips[i];
-                nid = &chkinfo->diskid[strip->idx];
+                reploc = &chkinfo->diskid[strip->idx];
 
                 io_init(&io, chkid, strip->count, strip->offset, 0);
                 mbuffer_init(&strip->buf, 0);
-                ret = cds_rpc_read(nid, &io, &strip->buf);
+                ret = cds_rpc_read(&reploc->id, &io, &strip->buf);
                 if (ret) {
                         GOTO(err_ret, ret);
                 }
@@ -212,12 +213,12 @@ err_ret:
 static int __chunk_read(const chkid_t *chkid, buffer_t *buf, int count, int offset)
 {
         int ret;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
         chkinfo_t *chkinfo;
         io_t io;
-        nid_t *nid;
+        reploc_t *reploc;
         diskid_t array[YFS_CHK_REP_MAX];
-        uint32_t i;
+        uint32_t i, repnum;
 
         ANALYSIS_BEGIN(0);
         
@@ -231,18 +232,27 @@ static int __chunk_read(const chkid_t *chkid, buffer_t *buf, int count, int offs
 
         DBUG("read "CHKID_FORMAT" offset %ju size %u\n",
              CHKID_ARG(&io.id), io.offset, io.size);
-        
-        memcpy(array, chkinfo->diskid, sizeof(diskid_t) * chkinfo->repnum);
 
-        netable_sort(array, chkinfo->repnum);
-        
+        repnum = 0;
         for (i = 0; i < chkinfo->repnum; i++) {
-                nid = &array[i];
-                if (nid->status & __S_DIRTY) {
+                reploc = &chkinfo->diskid[i];
+                if (reploc->status & __S_DIRTY) {
                         continue;
                 }
 
-                ret = cds_rpc_read(nid, &io, buf);
+                array[i] = reploc->id;
+                repnum++;
+        }
+
+        if (repnum == 0) {
+                ret = ENONET;
+                GOTO(err_ret, ret);
+        }
+        
+        netable_sort(array, repnum);
+        
+        for (i = 0; i < repnum; i++) {
+                ret = cds_rpc_read(&array[i], &io, buf);
                 if (unlikely(ret)) {
                         GOTO(err_ret, ret);
                 }
@@ -267,7 +277,7 @@ err_ret:
 
 #if 1
 
-STATIC void __chunk_replica_write__(void *arg)
+static void __chunk_replica_write__(void *arg)
 {
         int ret;
         chunk_write_ctx_t *ctx = arg;
@@ -303,30 +313,29 @@ static int __chunk_write__(const chkinfo_t *chkinfo, const buffer_t *buf, int si
         int ret, i, success = 0, sub_task = 0, online;
         chunk_write_ctx_t _ctx[YFS_CHK_REP_MAX], *ctx;
         task_t task;
-        const nid_t *nid;
+        const reploc_t *reploc;
         nid_t array[YFS_CHK_REP_MAX];
 
         ANALYSIS_BEGIN(0);
         
         online = 0;
         for (i = 0; i < (int)chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
-                if (nid->status & __S_DIRTY) {
+                reploc = &chkinfo->diskid[i];
+                if (reploc->status & __S_DIRTY) {
                         continue;
                 }
 
-                array[online] = *nid;
+                array[online] = reploc->id;
                 online++;
         }
 
         task = schedule_task_get();
         sub_task = online;
         for (i = 0; i < online; i++) {
-                nid = &array[i];
-
                 ctx = &_ctx[i];
                 ctx->buf = buf;
-                ctx->nid = nid;
+                ctx->nid = &array[i];
+                YASSERT(array[i].id);
                 ctx->task = &task;
                 ctx->sub_task = &sub_task;
                 io_init(&ctx->io, &chkinfo->chkid, size, offset, 0);
@@ -395,7 +404,7 @@ static int __chunk_write(const fileinfo_t *md, const chkid_t *chkid,
                          const buffer_t *buf, int count, int offset)
 {
         int ret, intect;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
         chkinfo_t *chkinfo;
 
         ANALYSIS_BEGIN(0);
@@ -575,7 +584,7 @@ static int __chunk_ec_write_strip(ec_arg_t *ec_arg, int count, int offset, const
 
                         ret = __chunk_write_ec_strip__(data, begin, end, row,
                                                        count, offset,
-                                                       buffs[i], &chkinfo->diskid[i],
+                                                       buffs[i], &chkinfo->diskid[i].id,
                                                        &chkinfo->chkid);
                         if (ret)
                                 GOTO(err_free, ret);
@@ -645,11 +654,12 @@ static int __chunk_write_ec__(const ec_arg_t *ec_arg, const chkinfo_t *chkinfo)
         sub_task = online;
         for (i = 0; i < online; i++) {
                 strip = &ec_arg->strips[i];
-                nid = &chkinfo->diskid[strip->idx];
+                nid = &chkinfo->diskid[strip->idx].id;
         
                 ctx = &_ctx[i];
                 ctx->buf = &strip->buf;
                 ctx->nid = nid;
+                YASSERT(nid->id);
                 ctx->task = &task;
                 ctx->sub_task = &sub_task;
                 io_init(&ctx->io, &chkinfo->chkid, strip->count, strip->offset, 0);
@@ -716,7 +726,7 @@ static int __chunk_write_ec(const fileinfo_t *md, const chkid_t *chkid,
         int ret, intect;
         ec_arg_t ec_arg;
         chkinfo_t *chkinfo;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
         buffer_t newbuf;
 
         DBUG("write "CHKID_FORMAT"\n", CHKID_ARG(chkid));
@@ -830,3 +840,4 @@ retry:
 err_ret:
         return ret;
 }
+#endif

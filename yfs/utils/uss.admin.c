@@ -149,6 +149,8 @@ err_ret:
         return ret;
 }
 */
+
+#if 0
 static int __check_arg(int argc, char **argv, int arguments)
 {
         int ret;
@@ -169,9 +171,16 @@ static int __check_arg(int argc, char **argv, int arguments)
 err_ret:
         return ret;
 }
+#endif
 
 static int __init_root(int argc, char **argv)
 {
+        (void) argc;
+        (void) argv;
+        UNIMPLEMENTED(__DUMP__);
+
+        return 0;
+#if 0
         int ret, arguments = 0;
 
         arguments = cmd_flag_data.arguments * 2 + 2;
@@ -189,6 +198,7 @@ static int __init_root(int argc, char **argv)
         return 0;
 err_ret:
         return ret;
+#endif
 }
 
 static void usage(const struct command *commands, int status)

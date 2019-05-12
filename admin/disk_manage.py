@@ -31,7 +31,7 @@ class DiskManage(object):
         self.config = node.config
         self.raid = None
         self.disk = Disk()
-        self.disk_home = os.path.join(self.config.home, 'cds')
+        self.disk_home = os.path.join(self.config.home, 'bactl')
         self.cacheconf = None
 
     def ssd_models(self):

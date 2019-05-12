@@ -2171,7 +2171,7 @@ err_ret:
         return -ret;
 }
 
-int _lock_file(const char *key, int flag)
+int _lock_file(const char *key, int lflag, int cflag)
 {
         int ret, fd, flags;
 
@@ -2180,7 +2180,7 @@ int _lock_file(const char *key, int flag)
                 GOTO(err_ret, ret);
 
         /* avoid multiple copies */
-        fd = open(key, O_CREAT | O_RDONLY, 0640);
+        fd = open(key, cflag | O_RDONLY, 0640);
         if (fd == -1) {
                 ret = errno;
                 GOTO(err_ret, ret);
@@ -2198,7 +2198,7 @@ int _lock_file(const char *key, int flag)
                 GOTO(err_fd, ret);
         }
 
-        ret = flock(fd, flag);
+        ret = flock(fd, lflag);
         if (ret == -1) {
                 ret = errno;
                 if (ret == EWOULDBLOCK) {

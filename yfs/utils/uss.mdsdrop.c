@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
                 GOTO(err_ret, ret);
 
         addr = (void *)buf;
-        ret = config_import(addr, &count, "mond");
+        ret = config_import(addr, &count, "mds");
         if (ret)
                 GOTO(err_ret, ret);
 

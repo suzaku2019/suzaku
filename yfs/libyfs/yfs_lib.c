@@ -24,12 +24,16 @@
 #include "redis.h"
 #include "bh.h"
 #include "core.h"
+#include "ynet_rpc.h"
 #include "attr_queue.h"
 #include "io_analysis.h"
 #include "../../cds/cds_rpc.h"
 #include "net_global.h"
+#include "partition.h"
+#include "diskid.h"
+#include "range.h"
+#include "maping.h"
 #include "mem_hugepage.h"
-//#include "license_helper.h"
 #include "main_loop.h"
 #include "dbg.h"
 
@@ -46,7 +50,6 @@ extern analysis_t *default_analysis;
 
 int *exit_times;
 int exit_count;
-int __no_root__ = 0;
 
 static void __exit_handler_init()
 {
@@ -144,80 +147,6 @@ err_ret:
         return ret;
 }
 
-static int yfs_version_check(const char *home)
-{
-        int ret, fd = -1;
-        char path[MAX_PATH_LEN], buf[MAX_BUF_LEN];
-        struct stat stbuf;
-
-        /*old version*/
-        sprintf(path, "%s/version", home);
-
-        ret = stat(path, &stbuf);
-        if (ret == 0) {
-                FATAL_EXIT("old version found");
-        }
-
-        sprintf(path, "%s/%s/version", home, YFS_STATUS_PRE);
-
-        ret = path_validate(path, 0, 1);
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = stat(path, &stbuf);
-        if (ret) {
-                ret = errno;
-
-                if (ret == ENOENT) {
-                        fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0644);
-                        if (fd < 0) {
-                                ret = -fd;
-                                GOTO(err_ret, ret);
-                        }
-
-                        ret = _write(fd, YFS_META_VERSION, strlen(YFS_META_VERSION));
-                        if (ret < 0) {
-                                ret = -ret;
-                                GOTO(err_ret, ret);
-                        }
-
-                        goto out;
-                } else {
-                        DERROR("path %s\n", path);
-
-                        GOTO(err_ret, ret);
-                }
-        }
-
-        fd = open(path, O_RDONLY);
-        if (fd < 0) {
-                ret = -fd;
-                GOTO(err_ret, ret);
-        }
-
-        memset(buf, 0x0, MAX_BUF_LEN);
-        ret = read(fd, buf, MAX_BUF_LEN);
-        if (ret < 0) {
-                ret = errno;
-                GOTO(err_ret, ret);
-        }
-
-        if (strcmp(buf, YFS_META_VERSION) != 0) {
-                DERROR("got data version: %s", buf);
-                DERROR("supported version: %s", YFS_META_VERSION);
-                DERROR("unsupported format, exit\n");
-                EXIT(EINVAL);
-        }
-
-out:
-        close(fd);
-
-        return 0;
-err_ret:
-        close(fd);
-        return ret;
-}
-
 static int fence_test_sync()
 {
         return 0;
@@ -291,10 +220,6 @@ static int __system_check()
 
         return 0;
         
-#ifdef __CENTOS5__
-        return 0;
-#endif
-
         fd = open("/proc/version", O_RDONLY);
         if (fd < 0) {
                 DERROR("unsupported system\n");
@@ -379,47 +304,29 @@ void ly_set_daemon()
         is_daemon = 2;
 }
 
-int ly_prep(int daemon, const char *name, int64_t maxopenfile)
+int ly_prep(int daemon, const char *home, const char *logname, int64_t maxopenfile)
 {
         int ret, lockfd;
-        //uint32_t port;
-        char home[MAX_PATH_LEN], path[MAX_PATH_LEN], logname[MAX_NAME_LEN],
-                clustername[MAX_NAME_LEN];
+        char path[MAX_PATH_LEN], clustername[MAX_NAME_LEN];
 
         ret = conf_init(YFS_CONFIGURE_FILE);
         if (ret)
                 GOTO(err_ret, ret);
-
-#ifndef __CYGWIN__
-        if(strncmp(name, "nfs", strlen("nfs")) == 0){
-                ret = nfs_config_init(YNFS_CONFIGURE_FILE);
-                if (ret)
-                        GOTO(err_ret, ret);
-        }
-
-        if(strncmp(name, "ftp", strlen("ftp")) == 0){
-                ret = yftp_config_init(YFTP_PASSWORD_FILE);
-                if(ret)
-                        GOTO(err_ret, ret);
-        }
-#endif
-
-
-        //strcpy(gloconf.cluster_name, sanconf.iqn);
-
-        snprintf(home, MAX_PATH_LEN, "%s/%s", gloconf.workdir, name);
-
-        DBUG("daemon %u home %s\n", daemon, home);
-
+        
         __system_check();
         __ng_init();
-        _strcpy(ng.home, home);
         ng.daemon = daemon;
 
+        if (home) {
+                _strcpy(ng.home, home);
+        } else {
+                snprintf(ng.home, MAX_PATH_LEN, "%s/%s", gloconf.workdir, logname);
+        }
+
+        DBUG("daemon %u home %s\n", daemon, ng.home);
+        
         if (daemon) {
                 if (daemon == 1) {
-                        strcpy(logname, name);
-                        replace(logname, '/', '_');
                         snprintf(path, MAX_PATH_LEN, "%s/log/%s.log", SDFS_HOME, logname);
 
                         ret = path_validate(path, 0, 1);
@@ -435,10 +342,6 @@ int ly_prep(int daemon, const char *name, int64_t maxopenfile)
 
                 is_daemon = 1;
 
-                ret = yfs_version_check(home);
-                if (ret)
-                        GOTO(err_ret, ret);
-
                 snprintf(path, MAX_PATH_LEN, "%s/status/status", home);
                 lockfd = daemon_lock(path);
                 if (lockfd < 0) {
@@ -449,10 +352,6 @@ int ly_prep(int daemon, const char *name, int64_t maxopenfile)
                 ret = daemon_update(path, "starting\n");
                 if (ret)
                         GOTO(err_ret, ret);
-
-                if (strcmp(gloconf.cluster_name, "yfs") == 0 || strlen(gloconf.cluster_name) == 0) {
-                        FATAL_EXIT("set your cluster name please !!!!");
-                }
 
                 snprintf(path, MAX_PATH_LEN, "%s/status/clustername", home);
 
@@ -475,19 +374,7 @@ int ly_prep(int daemon, const char *name, int64_t maxopenfile)
                         }
                 }
         } else {
-                if(strcmp(name, "fsal_uss") == 0) {
-                        strcpy(logname, name);
-                        replace(logname, '/', '_');
-                        snprintf(path, MAX_PATH_LEN, "%s/log/%s.log", SDFS_HOME, logname);
-
-                        ret = path_validate(path, 0, 1);
-                        if (ret)
-                                GOTO(err_ret, ret);
-
-                        (void) ylog_init(YLOG_FILE, path);
-                } else {
-                        (void) ylog_init(YLOG_STDERR, "");
-                }
+                (void) ylog_init(YLOG_STDERR, "");
                 (void) daemonlize(0, gloconf.maxcore, NULL, -1, maxopenfile);
         }
 
@@ -593,7 +480,7 @@ err_ret:
         return ret;
 }
 
-int init_stage2(const char *name, int noroot, int redis_conn)
+int init_stage2(const char *name)
 {
         int ret, thread;
         char home[MAX_PATH_LEN], path[MAX_PATH_LEN];
@@ -602,24 +489,13 @@ int init_stage2(const char *name, int noroot, int redis_conn)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = redis_init(redis_conn);
-        if (ret)
-                GOTO(err_ret, ret);
-        
-        if (!noroot) {
-                ret = md_root_init();
-                if (ret) {
-                        GOTO(err_ret, ret);
-                }
-        }
-        
         if (ng.daemon) {
                 ret = __nodeid_init(name);
                 if (ret)
                         GOTO(err_ret, ret);
         }
         
-        thread = ng.daemon ? gloconf.main_loop_threads : 2;
+        thread = gloconf.main_loop_threads;
         ret = main_loop_create(thread);
         if (ret)
                 GOTO(err_ret, ret);
@@ -663,6 +539,10 @@ int init_stage3()
                         GOTO(err_ret, ret);
         }
 
+        ret = d2n_init();
+        if (ret)
+                GOTO(err_ret, ret);
+        
         DINFO("stage3 inited\n");
         
         return 0;
@@ -683,7 +563,7 @@ int ly_init(int daemon, const char *name, int64_t maxopenfile)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = init_stage2(name, __no_root__, 1);
+        ret = init_stage2(name);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -711,7 +591,7 @@ err_ret:
         return ret;
 }
 
-int ly_run(char *home, int (*server)(void *), void *args)
+int ly_run(const char *home, int (*server)(void *), void *args)
 {
         int ret, son, status, over, network_flag = 1;
         int daemon;
@@ -872,11 +752,10 @@ int ly_init_simple2(const char *name)
 {
         int ret;
 
-        ret = ly_prep(0, name, -1);
+        ret = ly_prep(0, NULL, name, -1);
         if (ret)
                 GOTO(err_ret, ret);
 
-        __no_root__ = 1;
         ret = ly_init(0, name, -1);
         if (ret)
                 GOTO(err_ret, ret);
@@ -899,7 +778,7 @@ int ly_init_simple(const char *name)
 {
         int ret, retry = 0;
 
-        ret = ly_prep(0, name, -1);
+        ret = ly_prep(0, NULL, name, -1);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -911,7 +790,7 @@ int ly_init_simple(const char *name)
         is_daemon = 0;
 
 retry:
-        ret = network_connect_mond(0);
+        ret = network_connect_mds(0);
         if (ret) {
                 USLEEP_RETRY(err_ret, ret, retry, retry, 10, (1000 * 1000));
         }
@@ -931,15 +810,11 @@ int sdfs_init_verbose(const char *name, int polling_core)
 {
         int ret;
 
-#if ENABLE_CO_WORKER
-        polling_core = 1;
-#endif
-        
         ret = init_stage1();
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = init_stage2(name, __no_root__, polling_core);
+        ret = init_stage2(name);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -966,12 +841,21 @@ int sdfs_init_verbose(const char *name, int polling_core)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = core_init(polling_core, CORE_FLAG_ACTIVE | CORE_FLAG_PRIVATE);
+        ret = core_init(polling_core, CORE_FLAG_PASSIVE | CORE_FLAG_ACTIVE
+                        | CORE_FLAG_PRIVATE);
         if (ret)
                 GOTO(err_ret, ret);
 
+        ret = part_init(PART_MDS | PART_FRCTL);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        ret = range_init();
+        if (ret)
+                GOTO(err_ret, ret);
+        
 retry:
-        ret = network_connect_mond(0);
+        ret = network_connect_mds(0);
         if (ret) {
                 ret = _errno(ret);
                 if (ret == EAGAIN) {
@@ -986,17 +870,17 @@ err_ret:
         return ret;
 }
 
-int sdfs_init(const char *name)
+int sdfs_init(const char *name, int polling_core)
 {
         int ret;
 
-        ret = ly_prep(0, name, -1);
+        ret = ly_prep(0, NULL, name, -1);
         if(ret)
                 GOTO(err_ret, ret);
 
         ly_set_daemon();
         
-        ret = sdfs_init_verbose(name, gloconf.polling_core);
+        ret = sdfs_init_verbose(name, polling_core);
         if (ret)
                 GOTO(err_ret, ret);
 

@@ -30,7 +30,6 @@ int net_init(net_proto_t *op)
         if (op)
                 ng.op = *op;
 
-#if 1
         ng.op.head_len = sizeof(ynet_net_head_t);
         ng.op.writer = ng.op.writer ? ng.op.writer
                 : net_events_handle_write;
@@ -40,29 +39,6 @@ int net_init(net_proto_t *op)
                 : rpc_pack_len;
         ng.op.pack_handler = ng.op.pack_handler ? ng.op.pack_handler
                 : rpc_pack_handler;
-
-#else
-
-        ng.op.head_len = sizeof(ynet_net_head_t);
-        ng.op.writer = ng.op.writer ? ng.op.writer
-                : net_events_handle_write;
-        ng.op.reader = ng.op.reader ? ng.op.reader
-                : net_events_handle_read2;
-        ng.op.pack_len = ng.op.pack_len ? ng.op.pack_len
-                : rpc_pack_len;
-
-        if (ng.role == ROLE_MDS) {
-                ng.op.pack_handler = ng.op.pack_handler ? ng.op.pack_handler
-                        : rpc_pack_handler_schedule;
-        } else {
-                ng.op.pack_handler = ng.op.pack_handler ? ng.op.pack_handler
-                        : rpc_pack_handler;
-        }
-
-        ng.op.reply_handler = ng.op.reply_handler ? ng.op.reply_handler
-                : rpc_reply_handler;
-
-#endif
 
         ret = netable_init(ng.daemon);
         if (ret)

@@ -6,7 +6,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include <jemalloc/jemalloc.h>
+//#include <jemalloc/jemalloc.h>
 
 #define DBG_SUBSYS S_LIBYLIBMEM
 
@@ -14,20 +14,30 @@
 #include "ylib.h"
 #include "mem_pool.h"
 #include "mem_cache.h"
-#include "hash_table.h"
+#include "htab.h"
 #include "configure.h"
 #include "dbg.h"
 
 #define powerof2(x)     ((((x) - 1) & (x)) == 0)
 
+#define ENABLE_JEM 0
+
 static void *__malloc__(size_t size)
 {
+#if ENABLE_JEM
         return je_malloc(size);
+#else
+        return malloc(size);
+#endif
 }
 
 static void *__calloc__(size_t n, size_t elem_size)
 {
+#if ENABLE_JEM
         return je_calloc(n, elem_size);
+#else
+        return calloc(n, elem_size);
+#endif
 }
 
 static void *__memalign__(size_t alignment, size_t bytes)
@@ -35,7 +45,11 @@ static void *__memalign__(size_t alignment, size_t bytes)
         int ret;
         void *ptr=NULL;
 
+#if ENABLE_JEM
         ret = je_posix_memalign(&ptr, alignment, bytes);
+#else
+        ret = posix_memalign(&ptr, alignment, bytes);
+#endif
         if (ret)
                 return NULL;
 
@@ -44,7 +58,11 @@ static void *__memalign__(size_t alignment, size_t bytes)
 
 static void __free__(void *mem)
 {
+#if ENABLE_JEM
         return je_free(mem);
+#else
+        return free(mem);
+#endif
 }
 
 int ymalign(void **_ptr, size_t align, size_t size)
@@ -200,3 +218,19 @@ int yfree(void **ptr)
         return 0;
 }
 
+
+
+int huge_malloc(void **_ptr, size_t size)
+{
+        return ymalloc(_ptr, size);
+}
+
+int huge_realloc(void **_ptr, size_t size, size_t newsize)
+{
+        return yrealloc(_ptr, size, newsize);
+}
+
+int huge_free(void **ptr)
+{
+        return yfree(ptr);
+}

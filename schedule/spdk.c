@@ -9,7 +9,7 @@
 #include <rte_malloc.h>
 #include <rte_lcore.h>
 
-#define DBG_SUBSYS S_LIBSTORAGE
+#define DBG_SUBSYS S_YISCSI
 
 #include "core.h"
 #include "dbg.h"

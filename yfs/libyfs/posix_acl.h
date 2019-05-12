@@ -1,6 +1,7 @@
 #ifndef CEPH_POSIX_ACL
 #define CEPH_POSIX_ACL
 
+#if 0
 #define ACL_EA_VERSION          0x0002
 
 #define ACL_USER_OBJ            0x01
@@ -31,4 +32,5 @@ extern int posix_acl_equiv_mode(const void *xattr, size_t size, mode_t *mode_p);
 extern int posix_acl_default_get(void *acl_buf, size_t acl_buf_size, mode_t mode);
 extern size_t posix_acl_ea_size(int count);
 
+#endif
 #endif

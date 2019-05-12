@@ -32,6 +32,7 @@ typedef struct __connection {
         time_t update;
         time_t last_retry;
         uint32_t timeout;
+        int cores;
 
         struct list_head reset_handler;
 
@@ -80,6 +81,7 @@ int netable_start();
 
 //just for compatible, will be removed
 void netable_put(net_handle_t *nh, const char *why);
+int netable_cores(const nid_t *nid, uint32_t *cores);
 
 
 #endif

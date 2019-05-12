@@ -231,15 +231,19 @@ STATIC void __plock_timeout_check(void *args)
 
         if (rwlock->writer != -1) {
 #if LOCK_DEBUG
-                DWARN("lock %p, writer %d, readers %u count %u, write locked, last %u\n", rwlock,
-                      rwlock->writer, rwlock->readers, rwlock->count, rwlock->last_unlock);
+                DWARN("lock %p, writer %d, readers %u count %u,"
+                      " write locked, last %u\n", rwlock,
+                      rwlock->writer, rwlock->readers,
+                      rwlock->count, rwlock->last_unlock);
                 schedule_backtrace();
 #endif
                 return;
         } else {
 #if LOCK_DEBUG
-                DWARN("lock %p, writer %d, readers %u count %u, read locked, last %u\n", rwlock,
-                      rwlock->writer, rwlock->readers, rwlock->count, rwlock->last_unlock);
+                DWARN("lock %p, writer %d, readers %u count %u,"
+                      " read locked, last %u\n", rwlock,
+                      rwlock->writer, rwlock->readers,
+                      rwlock->count, rwlock->last_unlock);
 
                 schedule_backtrace();
 #endif
@@ -251,7 +255,8 @@ STATIC void __plock_timeout_check(void *args)
                 lock_wait = (void *)pos;
 
                 if (lock_wait->lock_type == 'r') {
-                        ret = __plock_trylock(rwlock, lock_wait->lock_type, 1, &lock_wait->task);
+                        ret = __plock_trylock(rwlock, lock_wait->lock_type,
+                                              1, &lock_wait->task);
                         if (unlikely(ret))
                                 break;
 
@@ -260,8 +265,10 @@ STATIC void __plock_timeout_check(void *args)
                         count++;
 
 #if LOCK_DEBUG
-                        DWARN("force lock %p, writer %d, readers %u count %u, last %u %d\n", rwlock,
-                                        rwlock->writer, rwlock->readers, rwlock->count, rwlock->last_unlock, count);
+                        DWARN("force lock %p, writer %d, readers %u count %u,"
+                              " last %u %d\n", rwlock,
+                              rwlock->writer, rwlock->readers, rwlock->count,
+                              rwlock->last_unlock, count);
 #endif
                         schedule_backtrace();                        
                 }
@@ -287,10 +294,13 @@ STATIC void __plock_timeout_check(void *args)
                         schedule_resume(&lock_wait->task, ETIMEDOUT, NULL);
                         lock_timeout++;
 #if LOCK_DEBUG
-                        DWARN("lock timeout %p, writer %d, readers %u count %u, last %u scheudle[%u] task[%u] type %d %d\n", rwlock,
-                                        rwlock->writer, rwlock->readers, rwlock->count, rwlock->last_unlock,
-                                        lock_wait->lock_type, lock_wait->task.scheduleid, lock_wait->task.taskid,
-                                        lock_timeout);
+                        DWARN("lock timeout %p, writer %d, readers %u count %u,"
+                              " last %u scheudle[%u] task[%u] type %d %d\n", rwlock,
+                              rwlock->writer, rwlock->readers, rwlock->count,
+                              rwlock->last_unlock,
+                              lock_wait->lock_type, lock_wait->task.scheduleid,
+                              lock_wait->task.taskid,
+                              lock_timeout);
 #endif
                 }
         }

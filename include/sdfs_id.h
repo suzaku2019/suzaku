@@ -2,13 +2,14 @@
 #define __SDFS_ID_H__
 
 #include <stdint.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdarg.h>
-
+#include <assert.h>
 
 //do not add new include here
 #include "sdfs_conf.h"
@@ -20,7 +21,7 @@ extern int srv_running;
 #define ROOT_ID  1
 #define ROOT_PID  0
 #define ROOT_IDX 0
-//#define ftype_vol (LLU)1
+//#define ftype_pool (LLU)1
 #define ROOT_NAME "/"
 
 #define INVALID_UID ((uid_t)-1)
@@ -92,30 +93,26 @@ typedef struct {
 
 typedef struct {
         uint64_t id;
-        uint64_t volid;
+        uint64_t poolid;
         uint32_t idx; /*chunk idx*/
-        uint8_t sharding;
-        uint8_t type;
+        uint16_t type;
         uint16_t __pad__;
 } chkid_t;
 
 typedef enum {
         ftype_null = 0,
-        ftype_vol = 1,
-        ftype_dir = 2,
-        ftype_file = 3,
-        ftype_symlink = 4,
-        ftype_block = 5,
-        ftype_xattr = 6,
-        ftype_quota = 7,
-        ftype_tab = 8,
-        ftype_root = 9,
-        ftype_max = 10,
+        ftype_root = 1,
+        ftype_pool = 2,
+        ftype_dir = 3,
+        ftype_file = 4,
+        ftype_sub = 5,
+        ftype_raw = 6,
+        ftype_max = 7,
 } ftype_t;
 
 static inline const char *ftype(const chkid_t *t)
 {
-        char *array[] = {"n", "v", "d", "f", "s", "b", "x", "q", "t", "r", "m"};
+        char *array[] = {"null", "raw", "pool", "dir", "vol", "subvol", "raw"};
 
         if (t->type > ftype_max) {
                 return array[0];
@@ -128,20 +125,12 @@ static inline int stype(int type)
 {
         if (type == ftype_null) {
                 return 0;
-        } else if (type == ftype_vol) {
+        } else if (type == ftype_pool) {
                 return __S_IFDIR;
         } else if (type == ftype_dir) {
                 return __S_IFDIR;
         } else if (type == ftype_file) {
                 return __S_IFREG;
-        } else if (type == ftype_symlink) {
-                return __S_IFLNK;
-        } else if (type == ftype_block) {
-                return __S_IFBLK;
-        } else if (type == ftype_xattr) {
-                return 0;
-        } else if (type == ftype_tab) {
-                return 0;
         } else if (type == ftype_root) {
                 return 0;
         } else {
@@ -149,17 +138,9 @@ static inline int stype(int type)
         }
 }
 
-
 typedef chkid_t fileid_t;
 typedef chkid_t dirid_t;
 typedef chkid_t poolid_t;
-
-
-static inline int fileid_hash(const fileid_t *fileid)
-{
-        return fileid->sharding;
-}
-
 
 typedef struct {
         uint32_t crc;
@@ -167,38 +148,13 @@ typedef struct {
         char buf[0];
 } crc_t;
 
-typedef struct {
-        void *fd;
-        char *data;     //directory block
-        int entry_data; //entry number 'data' corresponds to
-        char *ptr;      //current pointer into the block
-        int entry_ptr;  //entry number 'ptr' corresponds to
-} uss_dir_t;
-
-typedef struct lvm_throt {
-        int throt_read_set;
-        uint64_t throt_read_cur;
-        uint64_t throt_read_avg;
-        uint64_t throt_read_burst_max;
-        uint32_t throt_read_burst_time;
-
-        int throt_write_set;
-        uint64_t throt_write_cur;
-        uint64_t throt_write_avg;
-        uint64_t throt_write_burst_max;
-        uint32_t throt_write_burst_time;
-}lvm_throt_t;
-
 #pragma pack()
 
-//typedef verid64_new_t chkid_t;
-//typedef verid64_new_t fileid_t;
-
 #define OBJID_FORMAT " %llu_v%llu[%u]"
-#define OBJID_ARG(__id__) (LLU)(__id__)->id, (LLU)(__id__)->volid, (__id__)->idx
+#define OBJID_ARG(__id__) (LLU)(__id__)->id, (LLU)(__id__)->poolid, (__id__)->idx
 
 #define FID_FORMAT " %llu_v%llu[%u]"
-#define FID_ARG(__id__) (LLU)(__id__)->id, (LLU)(__id__)->volid, (__id__)->idx
+#define FID_ARG(__id__) (LLU)(__id__)->id, (LLU)(__id__)->poolid, (__id__)->idx
 
 #define DISKID_FORMAT "%llu"
 #define DISKID_ARG(_id) (LLU)(_id)->id
@@ -206,8 +162,11 @@ typedef struct lvm_throt {
 #define NID_FORMAT "%llu"
 #define NID_ARG(_id) (LLU)(_id)->id
 
-#define CHKID_FORMAT "%s:%llu.%llu[%u]"
-#define CHKID_ARG(_id) ftype((_id)), (LLU)(_id)->id, (LLU)(_id)->volid, (_id)->idx
+#define CHKID_FORMAT "%s-%llu-%llu-%u"
+#define CHKID_ARG(_id) ftype((_id)), (LLU)(_id)->poolid, (LLU)(_id)->id, (_id)->idx
+
+#define FILEID_FORMAT "%s-%llu-%llu"
+#define FILEID_ARG(_id) ftype((_id)), (LLU)(_id)->poolid, (LLU)(_id)->id
 
 #define JOBID_FORMAT " %u[%u] "
 #define JOBID_ARG(__id__) (__id__)->idx, (__id__)->seq
@@ -216,7 +175,7 @@ typedef struct lvm_throt {
 #define RPCID_ARG(__id__) (__id__)->tabid, (__id__)->idx, (__id__)->figerprint
 
 #define ID_VID_FORMAT " %llu_v%llu"
-#define ID_VID_ARG(__id__) (LLU)(__id__)->id, (LLU)(__id__)->volid
+#define ID_VID_ARG(__id__) (LLU)(__id__)->id, (LLU)(__id__)->poolid
 
 #define NEED_EAGAIN(ret) (ret == EAGAIN || ret == EBUSY || ret == ETIMEDOUT || ret == ENONET || ret == ENOTCONN)
 #define NEED_RETRY(ret) NEED_EAGAIN(ret)
@@ -225,43 +184,41 @@ static inline void cid2fid(fileid_t *fileid, const chkid_t *chkid)
 {
         *fileid = *chkid;
         fileid->idx = 0;
+        fileid->type = ftype_file;
 }
 
 static inline void fid2cid(chkid_t *chkid, const fileid_t *fileid, int chkno)
 {
         *chkid = *fileid;
         chkid->idx = chkno;
+        chkid->type = ftype_raw;
 }
 
 static inline void id2vid(uint64_t volid, fileid_t *fileid)
 {
     fileid->id = volid;
-    fileid->volid = volid;
+    fileid->poolid = volid;
     fileid->idx = 0;
-    fileid->type = ftype_vol;
+    fileid->type = ftype_pool;
 }
 
-inline static int init_rootid(fileid_t *fileid)
+static inline void fid2str(const fileid_t *fileid, char *str)
 {
-        fileid->id = ROOT_ID;
-        fileid->idx = 0;
-        fileid->volid = 1;
-        fileid->type = ftype_vol;
-        fileid->sharding = 0;
-        fileid->__pad__ = 0;
-        //fileid->snapvers = 0;
-
-        return 0;
+        assert(fileid->idx == 0);
+        assert(fileid->type == ftype_pool
+               || fileid->type == ftype_dir
+               || fileid->type == ftype_file);
+        snprintf(str, MAX_NAME_LEN, FILEID_FORMAT, FILEID_ARG(fileid));
 }
 
-#if 0
-#define ISROOT(fileid) (fileid->id == ROOT_ID \
-            && fileid->volid == ftype_vol)
-#endif
+static inline void cid2str(const chkid_t *chkid, char *str)
+{
+        snprintf(str, MAX_NAME_LEN, CHKID_FORMAT, CHKID_ARG(chkid));
+}
 
 static inline int chkid_null(const chkid_t *id)
 {
-        if ((id->volid == 0) && (id->id == 0) && (id->idx == 0)) {
+        if ((id->poolid == 0) && (id->id == 0) && (id->idx == 0)) {
             return 1;
         } else {
             return 0;
@@ -272,9 +229,9 @@ static inline int chkid_cmp(const chkid_t *keyid, const chkid_t *dataid)
 {
         int ret;
 
-        if (keyid->volid < dataid->volid) {
+        if (keyid->poolid < dataid->poolid) {
                 ret = -1;
-        } else if (keyid->volid > dataid->volid) {
+        } else if (keyid->poolid > dataid->poolid) {
                 ret = 1;
         } else {
                 if (keyid->id < dataid->id)
@@ -302,39 +259,26 @@ static inline int chkid_cmp(const chkid_t *keyid, const chkid_t *dataid)
 
 #define fileid_cmp chkid_cmp
 
-#if 0
-static inline int fileid_cmp(const fileid_t *keyid, const fileid_t *dataid)
-{
-        int ret;
-
-        //YASSERT(keyid->idx == 0);
-        //YASSERT(dataid->idx == 0);
-        if (keyid->volid < dataid->volid)
-            ret = -1;
-        else if (keyid->volid > dataid->volid)
-            ret = 1;
-        else {
-            if (keyid->id < dataid->id)
-                ret = -1;
-            else if (keyid->id > dataid->id)
-                ret = 1;
-            else
-                ret = 0;
-        }
-
-        return ret;
-}
-
-#endif
+#pragma pack(8)
 
 typedef struct {
-        uint32_t id;
-        uint8_t status; /*dirty*/
-        uint8_t type;
-        uint16_t __pad__;
+        uint16_t id;
 } ynet_net_nid_t;
 
 typedef ynet_net_nid_t nid_t;
+typedef ynet_net_nid_t diskid_t;
+
+typedef struct {
+        diskid_t id;
+        uint16_t status;
+} reploc_t;
+
+typedef struct {
+        nid_t nid;
+        uint16_t idx;
+} coreid_t;
+
+#pragma pack()
 
 typedef enum {
         NET_HANDLE_NULL,
@@ -356,6 +300,48 @@ typedef struct {
                 sockid_t  sd;
         } u;
 } net_handle_t;
+
+typedef struct {
+        uint64_t vfm;
+        uint64_t clock;
+} vclock_t;
+
+typedef struct {
+        uint32_t master;
+        uint64_t seq;
+} ltoken_t;
+
+typedef struct {
+        vclock_t vclock;
+        uint16_t dirty;
+        uint16_t lost;
+} clockstat_t;
+
+typedef struct {
+        chkid_t id;
+        uint64_t snapvers;
+        vclock_t vclock;
+        ltoken_t ltoken;
+        union {
+                uint64_t offset;
+                struct {
+                        uint32_t chunk_off:20;  // 1M
+                        uint32_t chunk_id:32;
+                        uint32_t __pad:12;
+                };
+        };
+        uint32_t size;
+        uint32_t flags;
+        uint32_t sessid;
+        //uint64_t lsn;
+        void *buf;
+} io_t;
+
+
+typedef struct {
+        uint32_t addr;
+        uint32_t port;
+} addr_t;
 
 static inline int sockid_cmp(const sockid_t *sock1, const sockid_t *sock2)
 {
@@ -430,12 +416,36 @@ static inline void net_handle_reset(void *_nh)
 
 static inline void str2nid(nid_t *nid, const char *str)
 {
-        sscanf(str, "%u", &nid->id);
+        sscanf(str, "%hu", &nid->id);
+}
+
+static inline void str2diskid(diskid_t *diskid, const char *str)
+{
+        sscanf(str, "%hu", &diskid->id);
 }
 
 static inline void nid2str(char *str, const nid_t *nid)
 {
         snprintf(str, MAX_NAME_LEN, "%u", nid->id);
+}
+
+static inline void io_init(io_t *io, const chkid_t *chkid,
+                           uint32_t size, uint64_t offset, uint32_t flags)
+{
+        memset(io, 0 ,sizeof(io_t));
+
+        if(chkid)
+                io->id = *chkid;
+
+        io->offset = offset;
+        io->size = size;
+        io->flags = flags;
+
+        /*
+        io->lsn = 0;
+        io->lease = -1;
+        */
+        io->snapvers = 0;
 }
 
 #define VOLUMEID_NULL 0

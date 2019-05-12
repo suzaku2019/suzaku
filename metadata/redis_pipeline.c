@@ -338,7 +338,7 @@ STATIC int __redis_exec(va_list ap)
         DBUG(CHKID_FORMAT"\n", CHKID_ARG(fileid));
 
 retry:
-        ret = redis_conn_get(&arg2->volid, fileid->sharding, __redis_workerid__, &handler);
+        ret = redis_conn_get(&arg2->poolid, fileid->sharding, __redis_workerid__, &handler);
         if(ret)
                 GOTO(err_ret, ret);
         
@@ -403,7 +403,7 @@ STATIC int __redis_pipline_run(pipeline_t *pipeline, int interrupt_eventfd)
                 pos = (void *)list.next;
                 ctx = (redis_pipline_ctx_t *)pos;
                 arg->fileid = ctx->fileid;
-                arg->volid = ctx->volid;
+                arg->poolid = ctx->poolid;
                 arg->finished = 0;
                 INIT_LIST_HEAD(&arg->list);
                 list_del(pos);
@@ -416,7 +416,7 @@ STATIC int __redis_pipline_run(pipeline_t *pipeline, int interrupt_eventfd)
 
                         if (ctx->fileid.sharding == arg->fileid.sharding
                             && ctx->fileid.volid == arg->fileid.volid
-                            && ctx->volid.snapvers == arg->volid.snapvers) {
+                            && ctx->poolid.snapvers == arg->poolid.snapvers) {
                                 list_del(pos);
                                 list_add_tail(pos, &arg->list);
                                 submit++;

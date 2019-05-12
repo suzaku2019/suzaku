@@ -16,6 +16,7 @@
 #include "corenet_maping.h"
 #include "corenet_connect.h"
 #include "net_rpc.h"
+#include "nodeid.h"
 #include "conn.h"
 #include "network.h"
 #include "variable.h"
@@ -158,11 +159,13 @@ static int __corenet_maping_accept__(const nid_t *nid, const sockid_t *_sockid)
                 GOTO(err_ret, ret);
 
         if (__connected__(entry, _sockid->addr)) {
-                DWARN("%s @ %s already connected\n", _inet_ntoa(_sockid->addr), network_rname(nid));
+                DWARN("%s @ %s already connected\n", _inet_ntoa(_sockid->addr),
+                      network_rname(nid));
                 __corenet_maping_close_finally__(_sockid);
                 goto out;
         } else {
-                DINFO("%s @ %s connected\n", _inet_ntoa(_sockid->addr), network_rname(nid));
+                DINFO("%s @ %s connected\n", _inet_ntoa(_sockid->addr),
+                      network_rname(nid));
         }
         
         for (i = 0; i < entry->count; i++) {
@@ -183,7 +186,7 @@ static int __corenet_maping_accept__(const nid_t *nid, const sockid_t *_sockid)
         }
 
         YASSERT(i < netconf.count);
-        YASSERT(i < CORENET_DEV_MAX);
+        YASSERT(i < SDFS_POLLING_MAX);
         
         if (i == entry->count) {
                 entry->sockid[i] = *_sockid;
@@ -253,76 +256,83 @@ STATIC void __corenet_maping_close_finally__(const sockid_t *sockid)
 
 }
 
-STATIC int __corenet_maping_connect____(const nid_t *nid, const ynet_sock_info_t *_sock,
-                                        int sock_count,
-                                        sockid_t *_sockid, int *_count)
+STATIC int __corenet_maping_connect_core(const coreid_t *coreid,
+                                         const corenet_addr_t *addr,
+                                         sockid_t *_sockid)
 {
-        int ret;
+        int ret, idx;
         sockid_t sockid;
         const ynet_sock_info_t *sock;
 
-        YASSERT(sock_count);
+        idx = fastrandom() % addr->info_count;
+        sock = &addr->info[idx];
 
-        int count = 0;
-        for (int i = 0; i < sock_count; i++) {
-                sock = &_sock[i];
-                
-                DINFO("connect to %s:%d @ %s [%u]\n", _inet_ntoa(sock->addr),
-                      ntohs(sock->port), network_rname(nid), i);
+
+        //DINFO("connect to %s:%d @ %s [%u]\n", _inet_ntoa(sock->addr),
+        //ntohs(sock->port), network_rname(nid), i);
 
 #if ENABLE_RDMA
-                if (gloconf.rdma)
-                        ret = corenet_rdma_connect(nid, sock->addr, &sockid);
-                else
-                        ret = corenet_tcp_connect(nid, sock->addr, sock->port, &sockid);
-#else
+        if (gloconf.rdma)
+                ret = corenet_rdma_connect(nid, sock->addr, &sockid);
+        else
                 ret = corenet_tcp_connect(nid, sock->addr, sock->port, &sockid);
+#else
+        ret = corenet_tcp_connect(coreid, sock->addr, sock->port, &sockid);
 #endif
-                if (unlikely(ret))
-                        continue;
-                
-                _sockid[count] = sockid;
-                count++;
-        }
-
-        if (count == 0) {
-                ret = ENONET;
+        if (unlikely(ret))
                 GOTO(err_ret, ret);
-        }
 
-        *_count = count;
+        DINFO("connect to %s/%d sd %u, addr %d:%d\n", network_rname(&coreid->nid),
+              coreid->idx, sockid.sd, sock->addr, sock->port);
+        
+        *_sockid = sockid;
         
         return 0;
 err_ret:
         return ret;
 }
 
-STATIC int __corenet_maping_connect__(const nid_t *nid, sockid_t *_sockid, int *_count)
+STATIC int __corenet_maping_connect__(const nid_t *nid, sockid_t *_sockid,
+                                      int *_count, int *device)
 {
         int ret;
-        ynet_net_info_t *info;
+        corenet_addr_t *addr;
         char buf[MAX_BUF_LEN];
+        uint32_t cores;
+        coreid_t coreid;
         
         ret = network_connect(nid, NULL, 0, 0);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        info = (void *)buf;
-        int buflen = MAX_BUF_LEN;
-        ret = net_rpc_coreinfo(nid, buf, &buflen);
+        ret = netable_cores(nid, &cores);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
+        
+        coreid.nid = *nid;
+        addr = (void *)buf;
+        for (uint32_t i = 0; i < cores; i++) {
+                coreid.idx = i;
+                ret = net_rpc_coreinfo(&coreid, addr);
+                if (unlikely(ret)) {
+                        GOTO(err_close, ret);
+                }
 
-        ret = __corenet_maping_connect____(nid, info->info, info->info_count, _sockid, _count);
-        if (unlikely(ret)) {
-                GOTO(err_ret, ret);
+                ret = __corenet_maping_connect_core(&coreid, addr, &_sockid[i]);
+                if (unlikely(ret)) {
+                        GOTO(err_close, ret);
+                }
         }
+
+        *device = addr->info_count;
+        *_count = cores;
         
         return 0;
+err_close:
+        UNIMPLEMENTED(__DUMP__);
 err_ret:
         return ret;
 }
-
 
 STATIC int __corenet_maping_connected__(const sockid_t *sockid)
 {
@@ -336,19 +346,54 @@ STATIC int __corenet_maping_connected__(const sockid_t *sockid)
 #endif   
 }
 
-STATIC int __corenet_maping_connect(const nid_t *nid)
+STATIC int __corenet_maping_update(const nid_t *nid, const sockid_t *_sockid,
+                                   int count, int device)
 {
-        int ret, max;
-        sockid_t sockid[CORENET_DEV_MAX];
-        core_t *core = core_self();
+        int ret, i;
+        corenet_maping_t *entry;
 
-        max = CORENET_DEV_MAX;
-        ret = __corenet_maping_connect__(nid, sockid, &max);
+        entry = &__corenet_maping_get__()[nid->id];
+        
+        ret = sy_spin_lock(&entry->lock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        //YASSERT(sockid.sd != -1);
-        ret = corenet_maping_accept(core, nid, sockid, max);
+        for (i = 0; i < entry->count; i++) {
+                if (__corenet_maping_connected__(&entry->sockid[i])) {
+                        UNIMPLEMENTED(__DUMP__);
+                }
+        }
+
+        for (i = 0; i < count; i++) {
+                YASSERT(_sockid[i].sd < nofile_max);
+                entry->sockid[i] = _sockid[i];
+        }
+
+        entry->count = count;
+        entry->device = device;
+        entry->loading = 0;
+
+        __corenet_maping_resume__(&entry->list, nid, 0);
+
+        sy_spin_unlock(&entry->lock);
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+STATIC int __corenet_maping_connect(const nid_t *nid)
+{
+        int ret, max, device;
+        sockid_t sockid[SDFS_POLLING_MAX];
+        core_t *core = core_self();
+
+        max = SDFS_POLLING_MAX;
+        ret = __corenet_maping_connect__(nid, sockid, &max, &device);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = __corenet_maping_update(nid, sockid, max, device);
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
 
@@ -377,26 +422,22 @@ err_ret:
         return ret;
 }
 
-static int __corenet_maping_get(const nid_t *nid, corenet_maping_t *entry, sockid_t *_sockid)
+static int __corenet_maping_get(const coreid_t *coreid, corenet_maping_t *entry,
+                                sockid_t *_sockid)
 {
-        int ret, i;
+        int ret;
         sockid_t *sockid;
-        
-        for (i = 0; i < entry->count; i++) {
-                sockid = &entry->sockid[(i + entry->cur) % entry->count];
-                if (likely(__corenet_maping_connected__(sockid))) {
-                        *_sockid = *sockid;
-                        entry->cur = (entry->cur + 1) % entry->count;
-                        break;
-                } else {
-                        DWARN("%s @ %s already closed, sd %d\n",
-                              _inet_ntoa(_sockid->addr), network_rname(nid), sockid->sd);
-                        sockid->sd = -1;
-                        continue;
-                }
-        }
 
-        if (i == entry->count) {
+        if (entry->count == 0) {
+                ret = ENONET;
+                GOTO(err_ret, ret);
+        }
+        
+        YASSERT((int)coreid->idx < (int)entry->count);
+        sockid = &entry->sockid[coreid->idx];
+        if (likely(__corenet_maping_connected__(sockid))) {
+                *_sockid = *sockid;
+        } else {
                 ret = ENONET;
                 GOTO(err_ret, ret);
         }
@@ -419,17 +460,18 @@ static void __corenet_maping_connect_task(void *arg)
         }
 }
 
-int corenet_maping(void *ctx, const nid_t *nid, sockid_t *sockid)
+int corenet_maping(void *ctx, const coreid_t *coreid, sockid_t *sockid)
 {
         int ret;
         corenet_maping_t *entry;
+        const nid_t *nid = &coreid->nid;
 
         ANALYSIS_BEGIN(0);
 retry:
-        entry = &__corenet_maping_get_byctx(ctx)[nid->id];
+        entry = &__corenet_maping_get_byctx(ctx)[coreid->nid.id];
         YASSERT(entry);
 
-        ret = __corenet_maping_get(nid, entry, sockid);
+        ret = __corenet_maping_get(coreid, entry, sockid);
         if (unlikely(ret)) {
                 /**
                  * 保证过程唯一性，只有一个task发起连接，其它并发task等待连接完成
@@ -451,7 +493,9 @@ retry:
 
                         DINFO("connect to %s\n", network_rname(nid));
 
-                        schedule_task_new("corenet_maping", __corenet_maping_connect_task, entry, -1);
+                        schedule_task_new("corenet_maping",
+                                          __corenet_maping_connect_task,
+                                          entry, -1);
                 } else {
                         sy_spin_unlock(&entry->lock);
                 }
@@ -508,17 +552,17 @@ static void __corenet_maping_close__(void *_arg)
         yfree((void **)&arg);
 }
 
-int corenet_maping_init(corenet_maping_t **_maping)
+static int __corenet_maping_init__(corenet_maping_t **_maping)
 {
         int ret, i;
         corenet_maping_t *maping, *entry;
         nid_t nid;
 
-        ret = ymalloc((void **)&maping, sizeof(*maping) *  INT16_MAX);
+        ret = ymalloc((void **)&maping, sizeof(*maping) *  NODEID_MAX);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        for (i = 0; i < INT16_MAX; i++) {
+        for (i = 0; i < NODEID_MAX; i++) {
                 nid.id = i;
                 entry = &maping[i];
                 ret = sy_spin_init(&entry->lock);
@@ -552,7 +596,8 @@ void __corenet_maping_close(void *_core, void *_opaque)
 
         *arg = *_arg;
         
-        ret = schedule_request(core->schedule, -1, __corenet_maping_close__, arg, "corenet_close");
+        ret = schedule_request(core->schedule, -1, __corenet_maping_close__,
+                               arg, "corenet_close");
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
 }
@@ -573,8 +618,9 @@ void corenet_maping_close(const nid_t *nid, const sockid_t *sockid)
         }
 }
 
+#if 0
 static int __corenet_maping_getlost(corenet_maping_t *entry, const ynet_net_info_t *info,
-                                     ynet_sock_info_t *array, int *_lost)
+                                    ynet_sock_info_t *array, int *_lost)
 {
         int ret, i, count = 0;
         const ynet_sock_info_t *sock;
@@ -623,15 +669,58 @@ err_ret:
         return ret;
 }
 
+STATIC int __corenet_maping_connect____(const nid_t *nid, const ynet_sock_info_t *_sock,
+                                        int sock_count,
+                                        sockid_t *_sockid, int *_count)
+{
+        int ret;
+        sockid_t sockid;
+        const ynet_sock_info_t *sock;
+
+        YASSERT(sock_count);
+
+        int count = 0;
+        for (int i = 0; i < sock_count; i++) {
+                sock = &_sock[i];
+                
+                DINFO("connect to %s:%d @ %s [%u]\n", _inet_ntoa(sock->addr),
+                      ntohs(sock->port), network_rname(nid), i);
+
+#if ENABLE_RDMA
+                if (gloconf.rdma)
+                        ret = corenet_rdma_connect(nid, sock->addr, &sockid);
+                else
+                        ret = corenet_tcp_connect(nid, sock->addr, sock->port, &sockid);
+#else
+                ret = corenet_tcp_connect(nid, sock->addr, sock->port, &sockid);
+#endif
+                if (unlikely(ret))
+                        continue;
+                
+                _sockid[count] = sockid;
+                count++;
+        }
+
+        if (count == 0) {
+                ret = ENONET;
+                GOTO(err_ret, ret);
+        }
+
+        *_count = count;
+        
+        return 0;
+err_ret:
+        return ret;
+}
+
 static void __corenet_maping_check__(void *_info)
 {
         int ret, i, connected, lost = 0;
         const ynet_net_info_t *info = _info;
         const nid_t *nid = &info->id;
         corenet_maping_t *entry;
-        sockid_t socks[CORENET_DEV_MAX];
-        ynet_sock_info_t info_array[CORENET_DEV_MAX];
-
+        sockid_t socks[SDFS_POLLING_MAX];
+        ynet_sock_info_t info_array[SDFS_POLLING_MAX];
         
         entry = &__corenet_maping_get__()[nid->id];
         ret = __corenet_maping_getlost(entry, info, info_array, &lost);
@@ -683,10 +772,74 @@ void corenet_maping_check(const ynet_net_info_t *info)
                 core_iterator(__corenet_maping_check, info);
         }
 }
+#endif
 
 void corenet_maping_destroy(corenet_maping_t **maping)
 {
         yfree((void **)maping);
         variable_unset(VARIABLE_MAPING);
         *maping = NULL;
+}
+
+inline static void __corenet_maping_routine(void *_core, void *var, void *_corenet_maping)
+{
+        (void) _core;
+        (void) _corenet_maping;
+        (void) var;
+
+        //corenet_maping_check(var);
+
+        return;
+}
+
+inline static void __corenet_maping_destroy(void *_core, void *var, void *_corenet_maping)
+{
+        core_t *core = _core;
+
+        (void) _corenet_maping;
+        (void) var;
+
+        corenet_maping_destroy((corenet_maping_t **)&core->maping);
+        
+        return;
+}
+
+static int __corenet_maping_init(va_list ap)
+{
+        int ret;
+        core_t *core = core_self();
+        
+        va_end(ap);
+
+        ret = __corenet_maping_init__((corenet_maping_t **)&core->maping);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = core_register_routine("corenet_maping", __corenet_maping_routine, core->maping);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+
+        ret = core_register_destroy("corenet_maping", __corenet_maping_destroy, core->maping);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+        
+
+        return 0;
+err_destroy:
+        UNIMPLEMENTED(__DUMP__);
+err_ret:
+        return ret;
+}
+
+int corenet_maping_init()
+{
+        int ret;
+                
+        ret = core_init_modules("corenet_maping", __corenet_maping_init, NULL);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        return 0;
+err_ret:
+        return ret;
 }

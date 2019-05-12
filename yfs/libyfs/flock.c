@@ -7,7 +7,7 @@
 
 #define DBG_SUBSYS S_YFSLIB
 #include "sdfs_id.h"
-#include "hash_table.h"
+#include "htab.h"
 #include "sdfs_lib.h"
 #include "sdfs_conf.h"
 #include "leveldb_util.h"
@@ -20,16 +20,16 @@ typedef struct {
 }uss_flock_table_t;
 
 typedef struct {
-        hashtable_t fhashtable;
+        htab_t fhashtable;
         pthread_mutex_t lock;
-}uss_flock_hashtable_t;
+}uss_flock_htab_t;
 
-static uss_flock_hashtable_t g_uss_flock_hashtable;
+static uss_flock_htab_t g_uss_flock_hashtable;
 
 static uint32_t __flock_hashkey(IN const void *fileid)
 {
         fileid_t *fileid_tmp = (fileid_t *)fileid;
-        return (fileid_tmp->id + fileid_tmp->volid);
+        return (fileid_tmp->id + fileid_tmp->poolid);
 }
 
 static int __flock_hashcmp(IN const void *fileid1,
@@ -39,7 +39,7 @@ static int __flock_hashcmp(IN const void *fileid1,
         fileid_t *fileid_tmp2 = (fileid_t *)fileid2;
 
         if ((fileid_tmp1->id == fileid_tmp2->id) &&
-            (fileid_tmp1->volid == fileid_tmp2->volid))
+            (fileid_tmp1->poolid == fileid_tmp2->poolid))
                 return 0;
         else
                 return 1;
@@ -53,7 +53,7 @@ static int __flock_hashtable_init(void)
         if (ret)
                 GOTO(err_ret, ret);
 
-        g_uss_flock_hashtable.fhashtable = hash_create_table(__flock_hashcmp,
+        g_uss_flock_hashtable.fhashtable = htab_create(__flock_hashcmp,
                                                              __flock_hashkey,
                                                              "uss_flock_hash");
         if (NULL == g_uss_flock_hashtable.fhashtable) {
@@ -640,7 +640,7 @@ static uss_flock_table_t *__flock_get_ftable(IN const fileid_t *fileid)
         uss_flock_table_t *ftable = NULL;
         uint32_t locks_num = 0;
 
-        ftable = hash_table_find(g_uss_flock_hashtable.fhashtable, (void *)fileid);
+        ftable = htab_find(g_uss_flock_hashtable.fhashtable, (void *)fileid);
         if (NULL != ftable)
                 return ftable;
 
@@ -651,7 +651,7 @@ static uss_flock_table_t *__flock_get_ftable(IN const fileid_t *fileid)
         locks_num = buf_len / sizeof(uss_flock_t);
         ret = __flock_create_ftable(fileid, (uss_flock_t *)locks_buf, locks_num, &ftable);
         if (0 == ret)
-                ret = hash_table_insert(g_uss_flock_hashtable.fhashtable,
+                ret = htab_insert(g_uss_flock_hashtable.fhashtable,
                                         (void *)ftable, (void *)fileid, 0);
         YASSERT(0 == ret);
 
@@ -688,7 +688,7 @@ static int __flock_setlock(IN const fileid_t *fileid, INOUT uss_flock_t *plock)
                 if (ret)
                         GOTO(err_assert, ret);
 
-                ret = hash_table_insert(g_uss_flock_hashtable.fhashtable,
+                ret = htab_insert(g_uss_flock_hashtable.fhashtable,
                                         (void *)p_table, (void *)fileid, 0);
                 if (ret)
                         GOTO(err_assert, ret);
@@ -706,7 +706,7 @@ static int __flock_setlock(IN const fileid_t *fileid, INOUT uss_flock_t *plock)
 
         if (0 == p_table->locks_num) {
                 // remove lock info of fileid from cache and leveldb
-                hash_table_remove(g_uss_flock_hashtable.fhashtable,
+                htab_remove(g_uss_flock_hashtable.fhashtable,
                                   (void *)fileid, NULL);
                 __flock_leveldb_remove(fileid);
         } else {
@@ -862,7 +862,7 @@ static int __flock_getall_locks_from_leveldb(void)
                 ret = __flock_create_ftable(&fileid, (uss_flock_t *)val->buf,
                                             locks_num, &ftable);
                 if (0 == ret)
-                        ret = hash_table_insert(g_uss_flock_hashtable.fhashtable,
+                        ret = htab_insert(g_uss_flock_hashtable.fhashtable,
                                                 (void *)ftable, (void *)&fileid, 0);
                 YASSERT(0 == ret);
                 leveldb_iter_next(iter);
@@ -883,7 +883,7 @@ void flock_remove_sid_locks(IN const uint64_t sid)
         ret = pthread_mutex_lock(&g_uss_flock_hashtable.lock);
         YASSERT(0 == ret);
 
-        hash_filter_table_entries(g_uss_flock_hashtable.fhashtable,
+        htab_filter(g_uss_flock_hashtable.fhashtable,
                                   __flock_remove_ftable_sid_locks,
                                   (void *)&sid, NULL);
 

@@ -498,13 +498,19 @@ void  rpc_table_reset(rpc_table_t *rpc_table, const sockid_t *sockid, const nid_
         }
 }
 
-static int __rpc_table_create(const char *name, int count, int tabid, rpc_table_t **_rpc_table)
+static int __rpc_table_create(const char *name, int count, int tabid,
+                              int private, rpc_table_t **_rpc_table)
 {
         int ret, i;
         solt_t *solt;
         rpc_table_t *rpc_table;
 
-        ret = ymalloc((void **)&rpc_table, sizeof(rpc_table_t) + sizeof(solt_t) * count);
+        uint32_t size = sizeof(rpc_table_t) + sizeof(solt_t) * count;
+        if (private) {
+                ret = huge_malloc((void **)&rpc_table, size);
+        } else {
+                ret = ymalloc((void **)&rpc_table, size);
+        }
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -533,6 +539,7 @@ static int __rpc_table_create(const char *name, int count, int tabid, rpc_table_
         rpc_table->count = count;
         rpc_table->tabid = tabid;
         rpc_table->last_scan = 0;
+        rpc_table->private = private;
         *_rpc_table = rpc_table;
 
         return 0;
@@ -546,7 +553,7 @@ int rpc_table_init(const char *name, rpc_table_t **rpc_table, int private)
         rpc_table_t *tmp;
 
         count = RPC_TABLE_MAX;
-        ret = __rpc_table_create(name, count, 0, &tmp);
+        ret = __rpc_table_create(name, count, 0, private, &tmp);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -589,5 +596,9 @@ void rpc_table_destroy(rpc_table_t **_rpc_table)
                 
         }
 
-        yfree((void **)&rpc_table);
+        if (rpc_table->private) {
+                huge_free((void **)&rpc_table);
+        } else {
+                yfree((void **)&rpc_table);
+        }
 }

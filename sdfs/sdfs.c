@@ -20,6 +20,7 @@
 #include "attr_queue.h"
 #include "core.h"
 #include "xattr.h"
+#include "volume.h"
 #include "dbg.h"
 
 
@@ -73,6 +74,7 @@ typedef struct {
         void *arg;
 } sdfs_write_ctx_t;
 
+#if 0
 int sdfs_read(sdfs_ctx_t *ctx, const fileid_t *fileid, buffer_t *_buf, uint32_t size, uint64_t offset)
 {
         int ret, retry = 0, chkno = -1;
@@ -91,7 +93,7 @@ int sdfs_read(sdfs_ctx_t *ctx, const fileid_t *fileid, buffer_t *_buf, uint32_t 
         DBUG("fileid "FID_FORMAT" size %llu off %llu size %u\n", FID_ARG(&md->fileid),
               (LLU)md->at_size, (LLU)offset, size);
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_getattr(&volid, fileid, (void *)md);
         if (ret) {
@@ -191,7 +193,7 @@ int sdfs_read_async(sdfs_ctx_t *_ctx, const fileid_t *fileid, buffer_t *buf, uin
         (void) _ctx;
         
         YASSERT(fileid->id);
-        YASSERT(fileid->volid);
+        YASSERT(fileid->poolid);
 
         DBUG("read off %llu size %u\n", (LLU)off, size);
 
@@ -217,6 +219,9 @@ err_ret:
         return ret;
 }
 
+#endif
+
+#if 0
 static int __resume_sem(void *obj, int retval)
 {
         __block_t *blk;
@@ -228,7 +233,8 @@ static int __resume_sem(void *obj, int retval)
         return 0;
 }
 
-static int __sdfs_read_sync1(sdfs_ctx_t *ctx, const fileid_t *fileid, buffer_t *buf, uint32_t size, uint64_t off)
+static int __sdfs_read_sync1(sdfs_ctx_t *ctx, const fileid_t *fileid,
+                             buffer_t *buf, uint32_t size, uint64_t off)
 {
         int ret;
         __block_t blk;
@@ -296,7 +302,8 @@ err_ret:
 }
 
 
-int sdfs_read_sync(sdfs_ctx_t *ctx, const fileid_t *fileid, buffer_t *buf, uint32_t size, uint64_t off)
+int sdfs_read_sync(sdfs_ctx_t *ctx, const fileid_t *fileid,
+                   buffer_t *buf, uint32_t size, uint64_t off)
 {
         int ret;
 
@@ -318,6 +325,36 @@ err_ret:
         return -ret;
 }
 
+#else
+
+int sdfs_read_sync(sdfs_ctx_t *ctx, const fileid_t *fileid,
+                   buffer_t *_buf, uint32_t size, uint64_t offset)
+{
+        int ret;
+        volume_t *volume;
+
+        (void) ctx;
+
+        ret = volume_open1(&volume, fileid);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        ret = volume_read1(volume, _buf, size, offset);
+        if (ret)
+                GOTO(err_close, ret);
+        
+        volume_close1(&volume);
+        
+        return size;
+err_close:
+        volume_close1(&volume);
+err_ret:
+        return -ret;
+}
+
+#endif
+
+#if 0
 static int __sdfs_write_split(wseg_t *segs, int *count, buffer_t *buf, uint32_t _size,
                    uint64_t _offset, uint32_t chk_max, const fileid_t *fileid)
 {
@@ -389,7 +426,7 @@ int sdfs_write(sdfs_ctx_t *ctx, const fileid_t *fileid, const buffer_t *_buf, ui
         mbuffer_init(&newbuf, 0);
         mbuffer_reference(&newbuf, _buf);
         
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_getattr(&volid, fileid, (void *)md);
         if (ret) {
@@ -515,7 +552,7 @@ int sdfs_write_async(sdfs_ctx_t *_ctx, const fileid_t *fileid, const buffer_t *b
         (void) _ctx;
         
         YASSERT(fileid->id);
-        YASSERT(fileid->volid);
+        YASSERT(fileid->poolid);
 
         DBUG("write off %llu size %u\n", (LLU)off, size);
 
@@ -612,7 +649,8 @@ err_ret:
         return -ret;
 }
 
-int sdfs_write_sync(sdfs_ctx_t *ctx, const fileid_t *fileid, const buffer_t *buf, uint32_t size, uint64_t off)
+int sdfs_write_sync(sdfs_ctx_t *ctx, const fileid_t *fileid,
+                    const buffer_t *buf, uint32_t size, uint64_t off)
 {
         int ret;
 
@@ -634,6 +672,35 @@ err_ret:
         return -ret;
 }
 
+#else
+
+int sdfs_write_sync(sdfs_ctx_t *ctx, const fileid_t *fileid,
+                    const buffer_t *_buf, uint32_t size, uint64_t offset)
+{
+        int ret;
+        volume_t *volume;
+
+        (void) ctx;
+
+        ret = volume_open1(&volume, fileid);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        ret = volume_write1(volume, _buf, size, offset);
+        if (ret)
+                GOTO(err_close, ret);
+        
+        volume_close1(&volume);
+        
+        return size;
+err_close:
+        volume_close1(&volume);
+err_ret:
+        return -ret;
+}
+
+#endif
+
 int sdfs_truncate(sdfs_ctx_t *ctx, const fileid_t *fileid, uint64_t length)
 {
         int ret;
@@ -651,7 +718,7 @@ int sdfs_truncate(sdfs_ctx_t *ctx, const fileid_t *fileid, uint64_t length)
         }
 #endif
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
         
 #if ENABLE_ATTR_QUEUE
         ret = attr_queue_truncate(&volid, fileid, length);
@@ -681,7 +748,7 @@ int sdfs_getxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name, voi
 
         io_analysis(ANALYSIS_OP_READ, 0);
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_getxattr(&volid, fileid, name, value, size);
         if (ret) {
@@ -703,7 +770,7 @@ int sdfs_removexattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name)
 
         io_analysis(ANALYSIS_OP_WRITE, 0);
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_removexattr(&volid, fileid, name);
         if (ret) {
@@ -727,7 +794,7 @@ int sdfs_listxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, char *list, size_t *
         
         io_analysis(ANALYSIS_OP_READ, 0);
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_listxattr(&volid, fileid, list, size);
         if (ret) {
@@ -755,7 +822,7 @@ int sdfs_setxattr(sdfs_ctx_t *ctx, const fileid_t *fileid, const char *name, con
         io_analysis(ANALYSIS_OP_WRITE, 0);
         md = (void *)buf;
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_getattr(&volid, fileid, md);
         if (ret) {
@@ -771,6 +838,7 @@ retry:
                 GOTO(err_ret, ret);
         }
 
+#if 0
         mode_t new_mode;
         if (0 == strcmp(name, ACL_EA_ACCESS)) {
                 new_mode = md->at_mode;
@@ -812,6 +880,7 @@ retry:
                         }
                 }
         }
+#endif
 
         ret = md_setxattr(&volid, fileid, name, value, size, flags);
         if (ret) {
@@ -827,7 +896,7 @@ err_ret:
         return ret;
 }
 
-
+#if 0
 int sdfs_setlock(sdfs_ctx_t *ctx, const fileid_t *fileid, const sdfs_lock_t *lock)
 {
         int ret, retry = 0;
@@ -835,7 +904,7 @@ int sdfs_setlock(sdfs_ctx_t *ctx, const fileid_t *fileid, const sdfs_lock_t *loc
         (void) ctx;
 
         io_analysis(ANALYSIS_OP_WRITE, 0);
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_setlock(&volid, fileid, lock);
         if (ret) {
@@ -858,7 +927,7 @@ int sdfs_getlock(sdfs_ctx_t *ctx, const fileid_t *fileid, sdfs_lock_t *lock)
         (void) ctx;
 
         io_analysis(ANALYSIS_OP_READ, 0);
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_getlock(&volid, fileid, lock);
         if (ret) {
@@ -963,3 +1032,14 @@ retry:
 err_ret:
         return ret;
 }
+
+#endif
+int sdfs_localize(const fileid_t *fileid)
+{
+        (void) fileid;
+        
+        UNIMPLEMENTED(__WARN__);
+
+        return 0;
+}
+

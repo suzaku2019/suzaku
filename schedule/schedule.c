@@ -1152,7 +1152,8 @@ static void __schedule_destroy(schedule_t *schedule)
         }
 }
 
-static int __schedule_create(int *eventfd, const char *name, int idx, schedule_t **_schedule, void *private_mem)
+static int __schedule_create(int *eventfd, const char *name, int idx,
+                             schedule_t **_schedule, void *private_mem)
 {
         int ret;
         schedule_t *schedule = NULL;
@@ -1192,7 +1193,8 @@ err_ret:
         return ret;
 }
 
-int schedule_create(int *eventfd, const char *name, int *idx, schedule_t **_schedule, void *private_mem)
+int schedule_create(int *eventfd, const char *name, int *idx,
+                    schedule_t **_schedule, void *private_mem)
 {
         int ret, i;
 

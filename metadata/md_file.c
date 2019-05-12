@@ -5,8 +5,6 @@
 
 #include "sdfs_buffer.h"
 #include "file_proto.h"
-#include "job_dock.h"
-#include "yfs_file.h"
 #include "net_global.h"
 #include "ynet_rpc.h"
 #include "ylib.h"
@@ -97,6 +95,7 @@ err_ret:
         return ret;
 }
 
+#if 0
 static int __md_lock_collision__(const sdfs_lock_t *lock1, const sdfs_lock_t *lock2)
 {
         uint64_t begin1, end1, begin2, end2;
@@ -321,3 +320,4 @@ err_lock:
 err_ret:
         return ret;
 }
+#endif

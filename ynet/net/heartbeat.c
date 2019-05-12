@@ -24,7 +24,6 @@
 #include "bh.h"
 #include "adt.h"
 #include "heartbeat.h"
-#include "squeue.h"
 #include "corenet_maping.h"
 #include "net_table.h"
 #include "net_rpc.h"

@@ -282,7 +282,7 @@ STATIC int __redis_utils_co1(const arg2_t *arg2, redis_handler_t *handler,
         redis_co_ctx_t *ctx;
         redis_conn_t *conn;
 
-        ret = redis_conn_get(&arg2->volid, arg2->fileid.sharding, 0, handler);
+        ret = redis_conn_get(&arg2->poolid, arg2->fileid.sharding, 0, handler);
         if(ret)
                 UNIMPLEMENTED(__DUMP__);
 
@@ -479,7 +479,7 @@ static int __redis_co_run(void *core_ctx, struct list_head *list)
                 pos = (void *)list->next;
                 ctx = (redis_co_ctx_t *)pos;
                 arg->fileid = ctx->fileid;
-                arg->volid = ctx->volid;
+                arg->poolid = ctx->poolid;
                 arg->finished = 0;
                 INIT_LIST_HEAD(&arg->list);
                 list_del(pos);
@@ -492,7 +492,7 @@ static int __redis_co_run(void *core_ctx, struct list_head *list)
 
                         if (ctx->fileid.sharding == arg->fileid.sharding
                             && ctx->fileid.volid == arg->fileid.volid
-                            && ctx->volid.snapvers == arg->volid.snapvers) {
+                            && ctx->poolid.snapvers == arg->poolid.snapvers) {
                                 list_del(pos);
                                 list_add_tail(pos, &arg->list);
                                 submit++;

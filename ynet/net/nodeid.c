@@ -23,6 +23,7 @@
 #include "nodeid.h"
 #include "net_table.h"
 #include "schedule.h"
+#include "partition.h"
 #include "ylog.h"
 #include "dbg.h"
 #include "bh.h"
@@ -51,7 +52,7 @@ err_ret:
         return ret;
 }
 
-static int __nodeid_newid(nodeid_t *_id, const char *name)
+int nodeid_newid(nodeid_t *_id, const char *name)
 {
         int ret;
         nodeid_t i;
@@ -116,7 +117,7 @@ int nodeid_init(nodeid_t *_id, const char *name)
         ret = net_gethostname(hostname, MAX_NAME_LEN);
         if (ret)
                 GOTO(err_ret, ret);
-                
+
         snprintf(nodename, MAX_NAME_LEN, "%s:%s", hostname, name);
         
         ret = nodeid_load(&id);
@@ -130,12 +131,11 @@ int nodeid_init(nodeid_t *_id, const char *name)
                 GOTO(err_ret, ret);
         }
 
-        ret = __nodeid_newid(&id, nodename);
+        ret = nodeid_newid(&id, nodename);
         if (ret)
                 GOTO(err_ret, ret);
         
         sprintf(key, "%s/%s/nid", ng.home, YFS_STATUS_PRE);
-
         ret = path_validate(key, YLIB_NOTDIR, YLIB_DIRCREATE);
         if (ret)
                 GOTO(err_ret, ret);
@@ -162,7 +162,7 @@ int nodeid_drop(nodeid_t id)
 
         snprintf(key, MAX_NAME_LEN, "%u", id);
 retry:
-        ret = etcd_del(ETCD_NID, key);
+        ret = etcd_del_dir(ETCD_NID, key, 1);
         if (unlikely(ret)) {
                 if (ret == EAGAIN) {
                         USLEEP_RETRY(err_ret, ret, retry, retry, 10, (100 * 1000));

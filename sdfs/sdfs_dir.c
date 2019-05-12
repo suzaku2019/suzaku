@@ -19,8 +19,6 @@
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
-#include "yfs_file.h"
-#include "cache.h"
 #include "sdfs_lib.h"
 #include "md_lib.h"
 #include "sdfs_chunk.h"
@@ -31,7 +29,7 @@
 #include "posix_acl.h"
 #include "flock.h"
 #include "xattr.h"
-#include "mond_rpc.h"
+#include "mds_rpc.h"
 #include "schedule.h"
 #include "io_analysis.h"
 #include "dbg.h"
@@ -54,7 +52,7 @@ int sdfs_mkdir(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name, const 
                             __SET_TO_SERVER_TIME, NULL);
 #endif
 
-        volid_t volid = {parent->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {parent->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_mkdir(&volid, parent, name, &setattr, fileid);
         if (ret) {
@@ -97,7 +95,7 @@ int sdfs_lookup_recurive(const char *path, fileid_t *fileid)
 
 retry:
         if (strcmp(dirname, ROOT_NAME) == 0) {
-                ret = md_lookupvol(basename, fileid);
+                ret = md_getpool(basename, fileid);
                 if (ret) {
                         ret = _errno(ret);
                         if (ret == EAGAIN) {
@@ -126,12 +124,17 @@ err_ret:
         return ret;
 }
 
-int sdfs_mkvol(const char *name, const ec_t *ec, mode_t mode, fileid_t *_fileid)
+int sdfs_mkpool(const char *name, const ec_t *ec, mode_t mode, fileid_t *_fileid)
 {
         int ret, retry = 0;
         setattr_t setattr;
         fileid_t fileid;
 
+        if (strstr(name, "/")) {
+                ret = EINVAL;
+                GOTO(err_ret, ret);
+        }
+        
         io_analysis(ANALYSIS_OP_WRITE, 0);
         
         setattr_init(&setattr, mode, -1, ec, geteuid(), getgid(), -1);
@@ -142,7 +145,7 @@ int sdfs_mkvol(const char *name, const ec_t *ec, mode_t mode, fileid_t *_fileid)
                             __SET_TO_SERVER_TIME, NULL);
 #endif
 retry:
-        ret = md_mkvol(name, &setattr, &fileid);
+        ret = md_mkpool(name, &setattr, &fileid);
         if (ret) {
                 ret = _errno(ret);
                 if (ret == EAGAIN) {
@@ -160,13 +163,13 @@ err_ret:
         return ret;
 }
 
-int sdfs_lookupvol(const char *name, fileid_t *fileid)
+int sdfs_getpool(const char *name, fileid_t *fileid)
 {
         int ret;
 
         io_analysis(ANALYSIS_OP_READ, 0);
 
-        ret = md_lookupvol(name, fileid);
+        ret = md_getpool(name, fileid);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -180,7 +183,7 @@ inline static int __etcd_getattr(const char *name, md_proto_t *md)
         int ret;
         fileid_t fileid;
 
-        ret = md_lookupvol(name, &fileid);
+        ret = md_getpool(name, &fileid);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -254,7 +257,7 @@ static int __etcd_listvol(void **de, int *delen, int plus)
 
         buflen = MAX_BUF_LEN;
 
-        ret = etcd_list(ETCD_VOLUME, &node);
+        ret = etcd_list(ETCD_POOL, &node);
         if(ret){
                 GOTO(err_ret, ret);
         }
@@ -264,7 +267,7 @@ retry:
         if (ret)
                 GOTO(err_ret, ret);
         
-        ret = __etcd_listvol__(ETCD_VOLUME, node, buf, &buflen, plus);
+        ret = __etcd_listvol__(ETCD_POOL, node, buf, &buflen, plus);
         if(ret) {
                 if (ret == ENOSPC) {
                         DWARN("nospace %u\n", buflen);
@@ -301,7 +304,7 @@ retry:
         if (fileid->type == ftype_root) {
                 ret = __etcd_listvol(de, delen, 0);
         } else {
-                volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+                volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
                 ret = md_readdir(&volid, fileid, offset, de, delen);
         }
 
@@ -335,7 +338,7 @@ retry:
         if (fileid->type == ftype_root) {
                 ret = __etcd_listvol(de, delen, 1);
         } else {
-                volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+                volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
                 ret = md_readdirplus(&volid, fileid, offset, de, delen);
         }
 
@@ -370,7 +373,7 @@ retry:
         if (fileid->type == ftype_root) {
                 ret = __etcd_listvol(de, delen, 1);
         } else {
-                volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+                volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
                 ret = md_readdirplus_with_filter(&volid, fileid, offset, de, delen, filter);
         }
 
@@ -422,7 +425,7 @@ int sdfs_rmdir(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name)
         }
 #endif
 
-        volid_t volid = {parent->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {parent->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_rmdir(&volid, parent, name);
         if (ret) {
@@ -467,9 +470,9 @@ int sdfs_lookup(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name, filei
         
 retry:
         if (parent->type == ftype_root) {
-                ret = md_lookupvol(name, fileid);
+                ret = md_getpool(name, fileid);
         } else {
-                volid_t volid = {parent->volid, ctx ? ctx->snapvers : 0};
+                volid_t volid = {parent->poolid, ctx ? ctx->snapvers : 0};
                 ret = md_lookup(&volid, fileid, parent, name);
         }
         if (ret) {
@@ -485,6 +488,7 @@ err_ret:
         return ret;
 }
 
+#if 0
 int sdfs_statvfs(sdfs_ctx_t *ctx, const fileid_t *fileid, struct statvfs *vfs)
 {
         int ret, retry = 0;
@@ -493,7 +497,7 @@ int sdfs_statvfs(sdfs_ctx_t *ctx, const fileid_t *fileid, struct statvfs *vfs)
 
         io_analysis(ANALYSIS_OP_READ, 0);
 retry:
-        ret = mond_rpc_statvfs(net_getnid(), fileid, vfs);
+        ret = mds_rpc_statvfs(net_getnid(), fileid, vfs);
         if (ret) {
                 ret = _errno(ret);
                 if (ret == EAGAIN) {
@@ -506,7 +510,9 @@ retry:
 err_ret:
         return ret;
 }
+#endif
 
+#if 0
 int sdfs_symlink(sdfs_ctx_t *ctx, const fileid_t *parent, const char *link_name,
                  const char *link_target, uint32_t mode, uid_t uid, gid_t gid)
 {
@@ -515,7 +521,7 @@ int sdfs_symlink(sdfs_ctx_t *ctx, const fileid_t *parent, const char *link_name,
         (void) ctx;
 
         io_analysis(ANALYSIS_OP_WRITE, 0);
-        volid_t volid = {parent->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {parent->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_symlink(&volid, parent, link_name, link_target, mode, uid, gid);
         if (ret) {
@@ -530,6 +536,7 @@ retry:
 err_ret:
         return ret;
 }
+#endif
 
 int sdfs_link2node(sdfs_ctx_t *ctx, const fileid_t *old, const fileid_t *parent, const char *name)
 {
@@ -538,7 +545,7 @@ int sdfs_link2node(sdfs_ctx_t *ctx, const fileid_t *old, const fileid_t *parent,
         (void) ctx;
 
         io_analysis(ANALYSIS_OP_WRITE, 0);
-        volid_t volid = {old->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {old->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_link2node(&volid, old, parent, name);
         if (ret) {
@@ -563,7 +570,7 @@ int sdfs_readlink(sdfs_ctx_t *ctx, const fileid_t *fileid, char *buf, uint32_t *
 
         io_analysis(ANALYSIS_OP_READ, 0);
 
-        volid_t volid = {fileid->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {fileid->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_readlink(&volid, fileid, link_target);
         if (ret) {
@@ -611,7 +618,7 @@ int sdfs_unlink(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name)
                 goto err_ret;
         }
 #endif
-        volid_t volid = {parent->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {parent->poolid, ctx ? ctx->snapvers : 0};
 retry:
         md = (void *)buf;
         ret = md_unlink(&volid, parent, name, (void *)md);
@@ -653,7 +660,7 @@ int sdfs_create(sdfs_ctx_t *ctx, const fileid_t *parent, const char *name,
                             __SET_TO_SERVER_TIME, NULL,
                             __SET_TO_SERVER_TIME, NULL);
 #endif
-        volid_t volid = {parent->volid, ctx ? ctx->snapvers : 0};
+        volid_t volid = {parent->poolid, ctx ? ctx->snapvers : 0};
 retry:
         ret = md_create(&volid, parent, name, &setattr, fileid);
         if (ret) {
@@ -669,14 +676,16 @@ err_ret:
         return ret;
 }
 
-static int __sdfs_listvol(dirlist_t **_dirlist)
+static int __sdfs_listpool(dirlist_t **_dirlist)
 {
         int ret, i, idx;
         etcd_node_t *array, *node;
         dirlist_t *dir_array;
         __dirlist_t *dir_node;
+        char key[MAX_PATH_LEN];
 
-        ret = etcd_list(ETCD_VOLUME, &array);
+        snprintf(key, MAX_NAME_LEN, "%s/name", ETCD_POOL);
+        ret = etcd_list(key, &array);
         if(ret){
                 GOTO(err_ret, ret);
         }
@@ -692,7 +701,7 @@ static int __sdfs_listvol(dirlist_t **_dirlist)
                 dir_node->d_type = __S_IFDIR;
                 strcpy(dir_node->name, node->key);
 
-                ret = md_lookupvol(dir_node->name, &dir_node->fileid);
+                ret = md_getpool(dir_node->name, &dir_node->fileid);
                 if (ret) {
                         if (ret == ENOENT) {
                                 memset(&dir_node->fileid, 0x0, sizeof(dir_node->fileid));
@@ -727,9 +736,9 @@ int sdfs_dirlist(sdfs_ctx_t *ctx, const dirid_t *dirid, uint32_t count, uint64_t
         (void) ctx;
 retry:
         if (dirid->type == ftype_root) {
-                ret = __sdfs_listvol(dirlist);
+                ret = __sdfs_listpool(dirlist);
         } else {
-                volid_t volid = {dirid->volid, ctx ? ctx->snapvers : 0};
+                volid_t volid = {dirid->poolid, ctx ? ctx->snapvers : 0};
                 ret = md_dirlist(&volid, dirid, count, offset, dirlist);
         }
 
@@ -789,7 +798,8 @@ void sdfs_closedir(sdfs_ctx_t *ctx, dirhandler_t *dirhandler)
         yfree((void **)&dirhandler);
 }
 
-int sdfs_readdir(sdfs_ctx_t *ctx, dirhandler_t *dirhandler, struct dirent **_de, fileid_t *_fileid)
+int sdfs_readdir(sdfs_ctx_t *ctx, dirhandler_t *dirhandler, struct dirent **_de,
+                 fileid_t *_fileid)
 {
         int ret, len, retry = 0;
         dirlist_t *dirlist;
@@ -828,16 +838,18 @@ int sdfs_readdir(sdfs_ctx_t *ctx, dirhandler_t *dirhandler, struct dirent **_de,
         if (dirlist == NULL) {
         retry:
                 if (dirid->type == ftype_root) {
-                        ret = __sdfs_listvol(&dirlist);
+                        ret = __sdfs_listpool(&dirlist);
                 } else {
-                        volid_t volid = {dirid->volid, ctx ? ctx->snapvers : 0};
-                        ret = md_dirlist(&volid, dirid, UINT8_MAX / 2, diroff.roff, &dirlist);
+                        volid_t volid = {dirid->poolid, ctx ? ctx->snapvers : 0};
+                        ret = md_dirlist(&volid, dirid, UINT8_MAX / 2,
+                                         diroff.roff, &dirlist);
                 }
 
                 if (ret) {
                         ret = _errno(ret);
                         if (ret == EAGAIN) {
-                                USLEEP_RETRY(err_ret, ret, retry, retry, 100, (1000 * 1000));
+                                USLEEP_RETRY(err_ret, ret, retry, retry,
+                                             100, (1000 * 1000));
                         } else
                                 GOTO(err_ret, ret);
                 }
@@ -939,7 +951,7 @@ static void *__sdfs_ctx_worker(void *arg)
         etcd_session  sess;
         etcd_node_t  *node = NULL;
 
-        snprintf(key, MAX_NAME_LEN, "%s/%s/%s/snapvers", ETCD_ROOT, ETCD_VOLUME, ctx->vol);
+        snprintf(key, MAX_NAME_LEN, "%s/%s/%s/snapvers", ETCD_ROOT, ETCD_POOL, ctx->vol);
 
         char *host = strdup("localhost:2379");
         sess = etcd_open_str(host);
@@ -981,7 +993,7 @@ int sdfs_connect(const char *vol, sdfs_ctx_t **_ctx)
         sdfs_ctx_t *ctx;
         fileid_t fileid;
 
-        ret = md_lookupvol(vol, &fileid);
+        ret = md_getpool(vol, &fileid);
         if (ret)
                 GOTO(err_ret, ret);
         

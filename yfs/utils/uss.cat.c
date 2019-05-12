@@ -11,6 +11,7 @@
 #include "ylib.h"
 #include "schedule.h"
 #include "sdfs_lib.h"
+#include "partition.h"
 
 static void usage(const char *prog)
 {
@@ -77,11 +78,23 @@ int main(int argc, char *argv[])
                 GOTO(err_ret, ret);
 
         dbg_info(0);
-        
+
+#if 0
         ret = ly_init_simple(prog);
         if (ret)
                 GOTO(err_ret, ret);
+#else
+        ret = sdfs_init("read", 1);
+        if (ret) {
+                fprintf(stderr, "sdfs_init() %s\n", strerror(ret));
+                exit(1);
+        }
+#endif
 
+        ret = part_init(PART_MDS | PART_FRCTL);
+        if (ret)
+                GOTO(err_ret, ret);
+        
         ret = ly_getattr(path, &stbuf);
         if (ret)
                 GOTO(err_ret, ret);

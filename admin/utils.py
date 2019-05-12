@@ -214,11 +214,11 @@ def check_sysctl(config, fix=True):
     #print (corepath)
     _check_sysctl("net.core.wmem_max", str(config.wmem_max), fix)
     _check_sysctl("net.core.rmem_max", str(config.rmem_max), fix)
-    _check_sysctl("net.ipv4.ip_forward", "0", fix)
+    #_check_sysctl("net.ipv4.ip_forward", "1", fix)
     _check_sysctl("kernel.core_pattern", "%s/core-%%e-%%p-%%s" % (corepath), fix)
     _check_config("/etc/sysctl.conf", "net.core.wmem_max", "=", str(config.wmem_max), fix)
     _check_config("/etc/sysctl.conf", "net.core.rmem_max", "=", str(config.rmem_max), fix)
-    _check_config("/etc/sysctl.conf", "net.ipv4.ip_forward", "=", "0", fix)
+    #_check_config("/etc/sysctl.conf", "net.ipv4.ip_forward", "=", "1", fix)
     _check_config("/etc/sysctl.conf", "kernel.core_pattern", "=", "%s/core-%%e-%%p-%%s" % (corepath), fix)
     #dmsg("check sysctl finished")
 
@@ -241,7 +241,6 @@ def check_crontab(config):
     log_dir = os.path.join(config.home, "log/")
     core_dir = os.path.join(config.home, "core/")
     log_backup_dir = os.path.join(config.home, "log/backup/")
-    mds_home = os.path.join(config.home, "mds/0")
 
     create_umpcron(cron)
     _check_crontab(cron,
@@ -425,13 +424,13 @@ def exec_remote(host, cmd, user = "root", password=None,
                     host, cmd, status, stdout, stderr)
             raise Exp(status, msg)
 
-def exec_shell(cmd, retry=3, p=True, need_return=False,
+def exec_shell(cmd, retry=0, p=False, need_return=False,
                shell=True, timeout=0):
     if (p):
         dmsg(cmd)
 
     _retry = 0
-    env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
+    #env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
     while (1):
         try:
             if need_return:
@@ -439,9 +438,9 @@ def exec_shell(cmd, retry=3, p=True, need_return=False,
                                      close_fds=True,
                                      stdout=subprocess.PIPE,
                                      stdin=subprocess.PIPE,
-                                     stderr=subprocess.PIPE, env=env)
+                                     stderr=subprocess.PIPE)
             else:
-                p = subprocess.Popen(cmd, shell=shell, env=env)
+                p = subprocess.Popen(cmd, shell=shell)
 
             if timeout != 0:
                 signal.signal(signal.SIGALRM, alarm_handler)
@@ -457,6 +456,8 @@ def exec_shell(cmd, retry=3, p=True, need_return=False,
                 _retry = _retry + 1
                 time.sleep(1)
                 continue
+            elif not need_return:
+                return (stdout, stderr)
             else:
                 raise Exp(ret, stderr, stdout)
         except KeyboardInterrupt as err:
@@ -473,7 +474,7 @@ def exec_pipe(cmd, retry=3, p=True, timeout=0):
     return res
 
 def _exec_pipe(cmd, retry = 3, p = True, timeout = 0):
-    env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
+    #env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
     #cmd = self.lich_inspect + " --movechunk '%s' %s  --async" % (k, loc)
     _retry = 0
     cmd1 = ''
@@ -488,7 +489,7 @@ def _exec_pipe(cmd, retry = 3, p = True, timeout = 0):
     while (1):
         p = None
         try:
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, env = env)
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         except Exception, e:
             raise Exp(e.errno, cmd1 + ": command execute failed")
 
@@ -527,7 +528,7 @@ def _exec_pipe(cmd, retry = 3, p = True, timeout = 0):
 ecec_pipe return stdout & stderr
 '''
 def _exec_pipe1(cmd, retry = 3, p = True, timeout = 0):
-    env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
+    #env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
     #cmd = self.lich_inspect + " --movechunk '%s' %s  --async" % (k, loc)
     _retry = 0
     cmd1 = ''
@@ -542,7 +543,7 @@ def _exec_pipe1(cmd, retry = 3, p = True, timeout = 0):
     while (1):
         p = None
         try:
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env = env)
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception, e:
             raise Exp(e.errno, cmd1 + ": command execute failed")
 
@@ -581,7 +582,7 @@ def _exec_pipe1(cmd, retry = 3, p = True, timeout = 0):
 ecec_pipe with stdin
 '''
 def _exec_pipe2(cmd, retry = 3, p = True, timeout = 0, stdin = None):
-    env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
+    #env = {"LANG" : "en_US", "LC_ALL" : "en_US", "PATH" : os.getenv("PATH")}
     #cmd = self.lich_inspect + " --movechunk '%s' %s  --async" % (k, loc)
     _retry = 0
     cmd1 = ''
@@ -596,7 +597,7 @@ def _exec_pipe2(cmd, retry = 3, p = True, timeout = 0, stdin = None):
     while (1):
         p = None
         try:
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, env = env)
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
         except Exception, e:
             raise Exp(e.errno, cmd1 + ": command execute failed")
 
@@ -1004,7 +1005,7 @@ def kill9_self():
 
 
 def _install_init_ussd(home):
-    dwarn("systemd disable\n")
+    dwarn("systemd config disable\n")
     return
     
     (distro, release, codename) = lsb_release()
@@ -1259,6 +1260,38 @@ def kill_tcp_connections(addr):
             derror("kill conn:%s fail", conn)
             pass
 
+def _put_remote(host, local, remote, user = "root", password=None, timeout = 10):
+    s = paramiko.SSHClient()
+    s.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        s.connect(host, 22, user, password, timeout = timeout)
+        f = s.open_sftp()
+        f.put(local, remote)
+    except socket.timeout as err:
+        raise Exp(err.errno, err.strerror)
+    except socket.error as err:
+        raise Exp(err.errno, err.strerror)
+    except paramiko.AuthenticationException as err:
+        # traceback.print_stack()
+        raise Exp(250, 'Authentication failed')
+    except IOError, e:
+        raise Exp(e.errno, e.strerror)
+    f.close()
+    s.close()
+
+def _exec_system(cmd, p=True, out=True, err=True):
+    if p:
+        print cmd
+
+    if not out:
+        cmd += " >/dev/null"
+    if not err:
+        cmd += " 2>/dev/null"
+
+    errno = os.system(cmd)
+    errno >>= 8
+
+    return errno
         
 if __name__ == "__main__":
     #print dev_lsblks()

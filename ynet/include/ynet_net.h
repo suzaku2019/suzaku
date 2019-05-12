@@ -123,9 +123,7 @@ typedef struct {
         char name[MAX_NODEID_LEN];
         char nodeid[MAX_NODEID_LEN];
         uint32_t magic;
-        uint16_t deleting;
         uint16_t info_count;       /**< network interface number */
-        uint16_t __padding;
         ynet_sock_info_t info[0];  /**< host byte order */
 } ynet_net_info_t;
 
@@ -143,7 +141,7 @@ static inline int str2netinfo(ynet_net_info_t *info, const char *buf)
         ret = sscanf(buf,
                      "len:%d\n"
                      "uptime:%u\n"
-                     "nid:%u\n"
+                     "nid:%hu\n"
                      "hostname:%[^\n]\n"
                      "nodeid:%[^\n]\n"
                      "magic:%d\n"
@@ -251,42 +249,6 @@ do {                                                                    \
                       inet_ntoa(__sin__), (__netinfo__)->info[__i__].port); \
         }                                                               \
 } while (0);
-
-#if 0
-typedef enum {
-        NETABLE_NULL,
-        NETABLE_CONN,
-        NETABLE_DEAD,
-} netstatus_t;
-
-typedef struct {
-        net_handle_t sock;
-} socklist_t;
-
-typedef struct {
-        uint32_t prev;
-        uint32_t now;
-} ltime_t;
-
-typedef struct __connection {
-        net_handle_t nh;
-        netstatus_t status;
-        sy_spinlock_t load_lock;
-
-        char lname[MAX_NAME_LEN];
-        ynet_net_info_t *info;
-
-        uint64_t load;        ///< latency，用于副本读的负载均衡
-        ltime_t ltime;
-        time_t update;
-        time_t last_retry;
-        uint32_t timeout;
-
-        struct list_head reset_handler;
-
-        net_handle_t sock;
-} ynet_net_conn_t;
-#endif
 
 /* net_lib.c */
 int net_init(net_proto_t *);

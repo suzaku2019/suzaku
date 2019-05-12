@@ -131,6 +131,22 @@ int cpuset_useable()
         return cpuinfo.polling_core;
 }
 
+int cpuset_count(int *count)
+{
+        int ret;
+
+        if (cpuinfo.polling_core == 0) {
+                ret = EAGAIN;
+                GOTO(err_ret, ret);
+        }
+
+        *count = cpuinfo.polling_core;
+
+        return 0;
+err_ret:
+        return ret;
+}
+
 static int __lookup_ht_core(int cpuid, int coreid)
 {
         int i = -1;
@@ -293,6 +309,8 @@ int cpuset_init(int polling_core)
         coreinfo_t *coreinfo;
         int node_list[MAX_NUMA_NODE] = {0};
 
+        YASSERT(polling_core <= SDFS_POLLING_MAX);
+        
         if (__cpuset_init__ == __CPUSET_INIT__)
                 return 0;
 

@@ -12,6 +12,7 @@
 #include "md_lib.h"
 #include "md_root.h"
 #include "md_db.h"
+#include "maping.h"
 #include "schedule.h"
 #include "dbg.h"
 
@@ -49,7 +50,7 @@ static int __md_root_create(const char *type, uint64_t _volid)
                 GOTO(err_ret, ret);
         }
 
-        //int t = (strcmp(type, ROOT_FS) == 0) ? ftype_vol : ftype_tab;
+        //int t = (strcmp(type, ROOT_FS) == 0) ? ftype_pool : ftype_tab;
         int t = ftype_tab;
         volid_t volid = {_volid, 0};
         ret = md_attr_getid(&fileid, NULL, t, &volid);

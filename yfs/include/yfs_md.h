@@ -9,9 +9,9 @@
 #include "disk_proto.h"
 #include "dbg.h"
 
-#define __S_PREALLOC                           0x00000001
+#define __S_CLEAN       0x00000000
+#define __S_CHECK       0x00000001
 #define __S_DIRTY                        0x00000002
-#define __S_WRITEBACK                          0x00000004
 
 
 #define ATTR_ERASURE_CODE   "erasure_code"
@@ -50,8 +50,7 @@
         struct timespec at_btime;                      \
         uint64_t at_blocks;                     \
         uint64_t at_size;                       \
-        uint8_t status;                        \
-        uint8_t repnum;                        \
+        uint8_t repnum;                         \
         uint32_t split;                         \
         uint32_t chknum;                        \
         uint8_t m:5;                            \
@@ -64,11 +63,10 @@ typedef struct {
         chkid_t chkid;
         uint64_t md_version;
         uint64_t snapversion;
-        uint8_t status;
+        //uint8_t status;
         uint32_t repnum;
         uint32_t size;
-        uint32_t master;
-        diskid_t diskid[0];
+        reploc_t diskid[0];
 } chkinfo_t;
 
 /*size:40*/
@@ -89,10 +87,14 @@ typedef struct {
         __MD__
 } md_proto_t;
 
-typedef struct {
-        crc_t crc;
-        fileid_t id;
-} namei_disk_t;
+inline static void md2ec(md_proto_t *md, ec_t *ec)
+{
+        ec->plugin = md->plugin;
+        ec->tech = md->tech;
+        ec->m = md->m;
+        ec->k = md->k;
+}
+
 
 #pragma pack()
 
@@ -100,7 +102,7 @@ typedef struct {
 #define MD2STAT(f, y) \
 do { \
         (y)->st_mode    = (uint32_t)(f)->at_mode;               \
-        (y)->st_dev     = (uint32_t)(f)->fileid.volid;          \
+        (y)->st_dev     = (uint32_t)(f)->fileid.poolid;          \
         (y)->st_ino     = (uint64_t)(f)->fileid.id;             \
         (y)->st_nlink   = (uint32_t)(f)->at_nlink;              \
         (y)->st_uid     = (uint32_t)(f)->at_uid;                \
@@ -136,7 +138,10 @@ do { \
 } while (0)
 #endif
 
-#define CHK_SIZE(__repnum__) (sizeof(chkinfo_t) + sizeof(diskid_t) * (__repnum__))
+#define CHKINFO_SIZE(__repnum__) (sizeof(chkinfo_t) + sizeof(reploc_t) * (__repnum__))
+#define CHKSTAT_SIZE(__repnum__) (sizeof(chkstat_t) + sizeof(repstat_t) * __repnum__)
+#define CHKSTAT_MAX (CHKSTAT_SIZE(SDFS_REPLICA_MAX))
+#define CHKINFO_MAX (CHKINFO_SIZE(SDFS_REPLICA_MAX))
 
 #define MAX_SUB_FILES 99999999
 

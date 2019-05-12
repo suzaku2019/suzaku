@@ -7,9 +7,7 @@
 
 #define DBG_SUBSYS S_YFSMDC
 
-#include "job_dock.h"
 #include "chk_proto.h"
-#include "yfs_chunk.h"
 #include "net_global.h"
 #include "ynet.h"
 #include "ylib.h"
@@ -20,12 +18,13 @@
 #include "net_global.h"
 #include "redis.h"
 #include "allocator.h"
+#include "cds_rpc.h"
 #include "md_db.h"
+#include "disk.h"
 #include "dbg.h"
 
-
 typedef struct {
-        diskid_t diskid;
+        reploc_t diskid;
         int online;
 } chkloc_info_t;
 
@@ -83,7 +82,7 @@ static int __md_newdisk(diskid_t *diskid, const chkinfo_t *chkinfo, int idx)
 
         UNIMPLEMENTED(__WARN__);//get tier
 retry:
-        ret = allocator_new(chkinfo->repnum, mdsconf.chknew_hardend, TIER_SSD, total_disks);
+        ret = allocator_new(chkinfo->chkid.poolid, chkinfo->repnum, total_disks);
         if (ret) {
                 DWARN("require %u, hardend %u ret (%d) %s\n", chkinfo->repnum,
                                 mdsconf.chknew_hardend, ret, strerror(ret));
@@ -95,13 +94,13 @@ retry:
                 found = 0;
                 newdisk = &total_disks[i];
                 for (j = 0; j < (int)chkinfo->repnum; ++j) {
-                        if (nid_cmp(&chkinfo->diskid[j], newdisk) == 0) {
+                        if (nid_cmp(&chkinfo->diskid[j].id, newdisk) == 0) {
                                 found = 1;
                                 break;
                         }
 
                         if (j != idx && mdsconf.chknew_hardend) {
-                                ret = __md_location_check(&chkinfo->diskid[j], newdisk, &found);
+                                ret = __md_location_check(&chkinfo->diskid[j].id, newdisk, &found);
                                 if (ret) {
                                         if (ret == EAGAIN) {
                                                 retry++;
@@ -143,7 +142,8 @@ err_ret:
 static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
 {
         int ret, i, online, newreps, available = 0;
-        diskid_t *diskid, newdisk;
+        reploc_t *diskid;
+        diskid_t newdisk;
         chkid_t *chkid = &chkinfo->chkid;
         chkloc_info_t _info[YFS_CHK_REP_MAX], *info;
         char msg[MAX_BUF_LEN];
@@ -154,9 +154,9 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
                 info = &_info[i];
                 info->diskid = *diskid;
 
-                ret = network_connect(diskid, NULL, 1, 1);
+                ret = network_connect(&diskid->id, NULL, 1, 1);
                 if (ret) {
-                        DINFO("%s (%d) not online\n", netable_rname_nid(diskid), diskid->id);
+                        DINFO("%s not online\n", netable_rname_nid(&diskid->id));
                         info->online = 0;
                 } else {
                         info->online = 1;
@@ -196,7 +196,7 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
 
                 for (i = 0; i < (int)chkinfo->repnum; i++) {
                         sprintf(msg + strlen(msg), DISKID_FORMAT,
-                                DISKID_ARG(&chkinfo->diskid[i]));
+                                DISKID_ARG(&chkinfo->diskid[i].id));
                 }
 
                 ret = EAGAIN;
@@ -222,7 +222,7 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
                 if (info->online == 0) {
                         DBUG("newrep "CHKID_FORMAT", disk "
                              DISKID_FORMAT" not online\n", CHKID_ARG(chkid),
-                             DISKID_ARG(diskid));
+                             DISKID_ARG(&diskid->id));
 
                         //retry:
                         ret = __md_newdisk(&newdisk, chkinfo, i);
@@ -233,18 +233,21 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
                                         GOTO(err_ret, ret);
                         }
 
-                        if (ynet_nid_cmp(&newdisk, diskid) != 0) {
+                        if (ynet_nid_cmp(&newdisk, &diskid->id) != 0) {
                                 DINFO("chk "CHKID_FORMAT" newrep at "
                                       DISKID_FORMAT"(%s) replace "DISKID_FORMAT"\n", 
                                       CHKID_ARG(&chkinfo->chkid), DISKID_ARG(&newdisk),
                                       netable_rname_nid(&newdisk), 
-                                      DISKID_ARG(diskid));
+                                      DISKID_ARG(&diskid->id));
 
-                                ret = rm_push(diskid, -1, chkid);
+                                UNIMPLEMENTED(__DUMP__);
+#if 0
+                                ret = rm_push(&diskid->id, -1, chkid);
                                 if (ret)
                                         GOTO(err_ret, ret);
+#endif
 
-                                chkinfo->diskid[i] = newdisk;
+                                chkinfo->diskid[i].id = newdisk;
                                 newreps++;
 
                                 if (flag != NEWREP_UNREG) {
@@ -291,24 +294,26 @@ static void __chkinfo_init(chkinfo_t *chkinfo, const chkid_t *chkid,
                            const diskid_t *disks, const fileinfo_t *md)
 {
         chkinfo->chkid = *chkid;
-        chkinfo->status = md->status;
         chkinfo->repnum = md->repnum;
         chkinfo->md_version = 0;
-        chkinfo->master = 0;
         chkinfo->size = md->split;
 
-        memcpy(chkinfo->diskid, disks, sizeof(*disks) * md->repnum);
+        for (int i = 0; i < (int)chkinfo->repnum; i++) {
+                chkinfo->diskid[i].id = disks[i];
+                chkinfo->diskid[i].status = 0;
+        }
 }
 
-int md_chunk_create(const fileinfo_t *md, uint64_t idx, chkinfo_t *chkinfo)
+int md_chunk_create(const fileinfo_t *md, const chkid_t *chkid, chkinfo_t *chkinfo)
 {
         int ret;
         diskid_t disk[YFS_CHK_REP_MAX];
-        chkid_t chkid;
 
+        DBUG("chunk create\n");
+        
         ANALYSIS_BEGIN(0);
         
-        ret = allocator_new(md->repnum, 0, TIER_SSD, disk);
+        ret = allocator_new(chkid->poolid, md->repnum, disk);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -316,9 +321,17 @@ int md_chunk_create(const fileinfo_t *md, uint64_t idx, chkinfo_t *chkinfo)
                 YASSERT(md->repnum == md->m);
         }
         
-        fid2cid(&chkid, &md->fileid, idx);
-        __chkinfo_init(chkinfo, &chkid, disk, md);
+        __chkinfo_init(chkinfo, chkid, disk, md);
 
+        for (int i = 0; i < (int)chkinfo->repnum; i++) {
+                reploc_t *reploc = &chkinfo->diskid[i];
+                ret = cds_rpc_create(&reploc->id, chkid, SDFS_CHUNK_SPLIT,
+                                     chkid->type != ftype_raw);
+                if (ret) {
+                        GOTO(err_ret, ret);
+                }
+        }
+        
         ret = chunkop->create(NULL, chkinfo);
         if (ret)
                 GOTO(err_ret, ret);
@@ -334,20 +347,22 @@ int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo)
 {
         int ret;
 
+        DINFO("load "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         ret = chunkop->load(NULL, chkid, chkinfo);
         if (ret)
                 GOTO(err_ret, ret);
-        
+
         return 0;
 err_ret:
         return ret;
 }
 
+#if 0
 static int __md_chunk_load_fast(const chkid_t *chkid, chkinfo_t *chkinfo)
 {
         int ret, count;
         uint32_t i;
-        nid_t *nid;
+        reploc_t *reploc;
 
         ret = md_chunk_load(chkid, chkinfo);
         if (unlikely(ret))
@@ -355,13 +370,13 @@ static int __md_chunk_load_fast(const chkid_t *chkid, chkinfo_t *chkinfo)
 
         count = 0;
         for (i = 0; i < chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
+                reploc = &chkinfo->diskid[i];
                 
-                if (nid->status & __S_DIRTY) {
+                if (reploc->status & __S_DIRTY) {
                         continue;
                 }
 
-                ret = network_connect(nid, NULL, 1, 0);
+                ret = disk_connect(&reploc->id, NULL, 1, 0);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
 
@@ -382,19 +397,19 @@ static int __md_chunk_check(chkinfo_t *chkinfo, int repmin)
 {
         int ret, count;
         uint32_t i;
-        nid_t *nid;
+        reploc_t *reploc;
 
         count = 0;
         for (i = 0; i < chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
+                reploc = &chkinfo->diskid[i];
 
-                if (nid->status & __S_DIRTY) {
+                if (reploc->status & __S_DIRTY) {
                         continue;
                 }
                 
-                ret = network_connect(nid, NULL, 1, 0);
+                ret = disk_connect(&reploc->id, NULL, 1, 0);
                 if (unlikely(ret)) {
-                        nid->status |= __S_DIRTY;
+                        reploc->status |= __S_DIRTY;
                         continue;
                 }
 
@@ -475,6 +490,7 @@ int md_chunk_load_check(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin)
 err_ret:
         return ret;
 }
+#endif
 
 int md_chunk_newdisk(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin, int flag)
 {

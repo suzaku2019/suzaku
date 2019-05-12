@@ -558,7 +558,7 @@ err_ret:
         return ret;
 }
 
-int aio_create(const char *name, int cpu, int polling)
+static int __aio_init__(const char *name, int cpu, int polling, aio_t **_aio)
 {
         int ret, efd;
         aio_t *aio;
@@ -586,6 +586,8 @@ int aio_create(const char *name, int cpu, int polling)
         
         variable_set(VARIABLE_AIO, aio);
 
+        *_aio = aio;
+
         return 0;
 err_free:
         yfree((void **)&aio);
@@ -593,7 +595,7 @@ err_ret:
         return ret;
 }
 
-static void __aio_destroy(aio_t *aio)
+static void __aio_destroy__(aio_t *aio)
 {
         int ret;
 
@@ -617,9 +619,101 @@ void aio_destroy()
 
         YASSERT(__aio__);
         for (i = 0; i < AIO_THREAD; i++) {
-                __aio_destroy(&__aio__[i]);
+                __aio_destroy__(&__aio__[i]);
         }
         
         yfree((void **)&__aio__);
         variable_unset(VARIABLE_AIO);
+}
+
+inline static void __aio_routine(void *_core, void *var, void *_aio)
+{
+        core_t *core = _core;
+
+        (void) _aio;
+        (void) var;
+        
+        YASSERT(core->flag & CORE_FLAG_AIO);
+        aio_submit();
+        
+        return;
+}
+
+inline static void __aio_poller(void *_core, void *var, void *_aio)
+{
+        core_t *core = _core;
+
+        (void) _aio;
+        (void) var;
+        
+        YASSERT(core->flag & CORE_FLAG_AIO);
+        
+        aio_polling();
+
+        return;
+}
+
+inline static void __aio_destroy(void *_core, void *var, void *_aio)
+{
+        core_t *core = _core;
+
+        (void) _aio;
+        (void) var;
+
+        YASSERT(core->flag & CORE_FLAG_AIO);
+        aio_destroy();
+        
+        return;
+}
+
+
+static int __aio_init(va_list ap)
+{
+        int ret;
+        core_t *core = core_self();
+        char name[MAX_NAME_LEN];
+        aio_t *aio;
+        
+        va_end(ap);
+
+        snprintf(name, sizeof(name), "%s[%u]", core->name, core->hash);
+
+        ret = __aio_init__(name, core->aio_core, core->flag & CORE_FLAG_POLLING, &aio);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+#if 1
+        ret = core_register_poller("aio", __aio_poller, aio);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+
+        ret = core_register_routine("aio", __aio_routine, aio);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+
+        ret = core_register_destroy("aio", __aio_destroy, aio);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+#endif
+        
+        DINFO("%s[%u] aio inited\n", core->name, core->hash);
+
+        return 0;
+err_destroy:
+        UNIMPLEMENTED(__DUMP__);
+err_ret:
+        return ret;
+}
+
+int aio_create()
+{
+        int ret;
+                
+        ret = core_init_modules("aio", __aio_init, NULL);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        return 0;
+err_ret:
+        return ret;
 }

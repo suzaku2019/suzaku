@@ -12,7 +12,7 @@
 #include "configure.h"
 #include "schedule.h"
 #include "net_global.h"
-#include "mond_rpc.h"
+#include "mds_rpc.h"
 #include "network.h"
 #include "io_analysis.h"
 #include "core.h"
@@ -212,7 +212,7 @@ static void *__io_analysis_rept(void *arg)
                          io_analysis->read_bytes, io_analysis->write_bytes,
                          core_latency_get());
 
-                mond_rpc_set(net_getnid(), path, buf, strlen(buf) + 1);
+                mds_rpc_set(net_getnid(), path, buf, strlen(buf) + 1);
 
                 ret = sy_spin_lock(&__io_analysis__->lock);
                 if (ret)
@@ -231,7 +231,7 @@ static void *__io_analysis_rept(void *arg)
         pthread_exit(NULL);
 }
 
-#define mond_for_each(buf, buflen, mon, off)                \
+#define mds_for_each(buf, buflen, mon, off)                \
         for (mon = (void *)(buf);                                       \
              (void *)mon < (void *)(buf) + buflen ;                     \
              off = mon->offset, mon = (void *)mon + (sizeof(*(mon)) + mon->klen + mon->vlen))
@@ -248,12 +248,12 @@ int io_analysis_dump(const char *type)
         snprintf(path, MAX_PATH_LEN, "/analysis/%s", type);
 retry:
         buflen = MON_ENTRY_MAX;
-        ret = mond_rpc_get(net_getnid(), path, offset, buf, &buflen);
+        ret = mds_rpc_get(net_getnid(), path, offset, buf, &buflen);
         if (ret)
                 GOTO(err_ret, ret);
 
         nid_t nid;
-        mond_for_each(buf, buflen, ent, offset) {
+        mds_for_each(buf, buflen, ent, offset) {
                 key = ent->buf;
                 value = key + ent->klen;
                 eof = ent->eof;

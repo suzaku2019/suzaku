@@ -8,13 +8,6 @@
 
 #define YNET_PORT_NULL ((uint32_t)-1)
 
-
-typedef enum {
-    ROLE_NULL = 0,
-    ROLE_MDS,
-    ROLE_MAX,
-} role_t;
-
 typedef struct {
         int inited;
         net_proto_t op;
@@ -35,7 +28,6 @@ typedef struct {
         char info_local[MAX_INFO_LEN];
         uint64_t nid_sequence;
         int daemon;
-        role_t role;
         uint32_t master_magic;
 } net_global_t;
 

@@ -159,7 +159,8 @@ static int __etcd_set(const char *key, const char *value,
         ANALYSIS_BEGIN(0);
 
         if (likely(schedule_running())) {
-                ret = schedule_newthread(SCHE_THREAD_ETCD, _random(), FALSE, "etcd_set", -1, __etcd_set_request,
+                ret = schedule_newthread(SCHE_THREAD_ETCD, _random(), FALSE,
+                                         "etcd_set", -1, __etcd_set_request,
                                          key, value, precond, flag, ttl);
                 if (unlikely(ret)) {
                         //YASSERT(ret == ENOKEY);
@@ -449,7 +450,7 @@ err_ret:
         return ret;
 }
 
-int etcd_mkdir(const char *dir, int ttl)
+int etcd_mkdir(const char *prefix, const char *dir, int ttl)
 {
         int ret;
         char key[MAX_PATH_LEN];
@@ -460,8 +461,7 @@ int etcd_mkdir(const char *dir, int ttl)
         precond.type = prevExist;
         precond.value = "false";
 
-        snprintf(key, MAX_NAME_LEN, "%s/%s", ETCD_ROOT, dir);
-        //TODO  __etcd_set_dir
+        snprintf(key, MAX_NAME_LEN, "%s/%s/%s", ETCD_ROOT, prefix, dir);
         ret = __etcd_set(key, NULL, &precond, ETCD_DIR, ttl);
         if (ret) {
                 //DWARN("mkdir dir: %s, ret: %d\n", dir, ret);
@@ -739,7 +739,30 @@ err_ret:
         return ret;
 }
 
-int etcd_lock_init(etcd_lock_t *lock, const char *prefix, const char *key, int ttl, uint32_t magic, int update)
+int etcd_list1(const char *prefix, const char *_key, etcd_node_t **_node)
+{
+        int ret;
+        char key[MAX_PATH_LEN];
+        etcd_node_t *node = NULL;
+
+        snprintf(key, MAX_NAME_LEN, "%s/%s/%s", ETCD_ROOT, prefix, _key);
+        ret = __etcd_get(key, &node, 0);
+        if(ret){
+                GOTO(err_ret, ret);
+        }
+
+        YASSERT(node->key && node->value == NULL);
+
+        __etcd_list(key, node);
+        *_node = node;
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+int etcd_lock_init(etcd_lock_t *lock, const char *prefix, const char *key,
+                   int ttl, uint32_t magic, int update)
 {
         int ret;
 
@@ -1022,7 +1045,7 @@ int etcd_locker(etcd_lock_t *lock, char *locker, nid_t *nid, uint32_t *_magic, i
                 *idx = node->modifiedIndex;
         }
 
-        ret = sscanf(node->value, "%[^,],%u, %u", locker, &nid->id, &magic);
+        ret = sscanf(node->value, "%[^,],%hu, %u", locker, &nid->id, &magic);
         if (ret != 3) {
                 ret = EIO;
                 GOTO(err_free, ret);
@@ -1077,7 +1100,7 @@ int etcd_lock_watch(etcd_lock_t *lock, char *locker, nid_t *nid, uint32_t *magic
 
         strcpy(locker, node->value);
 
-        ret = sscanf(node->value, "%[^,],%u, %u", locker, &nid->id, magic);
+        ret = sscanf(node->value, "%[^,],%hu, %u", locker, &nid->id, magic);
         if (ret != 3) {
                 ret = EIO;
                 GOTO(err_close, ret);
@@ -1231,6 +1254,7 @@ int etcd_is_proxy()
         return 0;
 }
 
+#if 0
 int etcd_set_with_ttl(const char *prefix, const char *key, const char *val, int ttl)
 {
         int ret;
@@ -1256,6 +1280,55 @@ int etcd_set_with_ttl(const char *prefix, const char *key, const char *val, int 
                         GOTO(err_ret, ret);
                 }
         }
+
+        return 0;
+err_ret:
+        return ret;
+}
+#endif
+
+int etcd_set_text(const char *prefix, const char *_key, const char *_value, int flag, int ttl)
+{
+        int ret;
+        char key[MAX_PATH_LEN], value[MAX_PATH_LEN];
+        etcd_prevcond_t *precond, _precond;
+
+        //YASSERT(strcmp(_value, ""));
+
+        snprintf(key, MAX_NAME_LEN, "%s/%s/%s", ETCD_ROOT, prefix, _key);
+        strcpy(value, _value);
+
+        precond = NULL;        
+        if (flag & O_EXCL) {
+                _precond.type = prevExist;
+                _precond.value = "false";
+                precond = &_precond;
+        }
+
+        ret = __etcd_set(key, value, precond, 0, ttl);
+        if (ret) {
+                GOTO(err_ret, ret);
+        }
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+int etcd_set_bin(const char *prefix, const char *_key, const void *_value,
+                 int valuelen, int flag, int ttl)
+{
+        int ret;
+        char buf[MAX_BUF_LEN];
+        size_t size;
+
+        size = MAX_BUF_LEN;
+        ret = urlsafe_b64_encode(_value, valuelen, buf, &size);
+        YASSERT(ret == 0);
+
+        ret = etcd_set_text(prefix, _key, buf, flag, ttl);
+        if (ret)
+                GOTO(err_ret, ret);
 
         return 0;
 err_ret:

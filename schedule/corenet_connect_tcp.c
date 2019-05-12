@@ -26,22 +26,25 @@
 #include "network.h"
 #include "../../ynet/sock/sock_tcp.h"
 #include "core.h"
+#include "corenet_connect.h"
 #include "corerpc.h"
+#include "mem_cache.h"
 #include "corenet_maping.h"
 #include "corenet.h"
 #include "dbg.h"
 
-static int __listen_sd__;
-
 typedef struct {
-        int hash;
-        nid_t from;
-        nid_t to;
+        coreid_t from;
+        coreid_t to;
         char uuid[UUID_LEN];
 } corenet_msg_t;
 
+typedef struct {
+        coreid_t coreid;
+        int sd;
+} __corenet_tcp_t;
+
 extern int nofile_max;
-int __corenet_port__ = -1;
 
 /**
  * 包括两步骤：
@@ -52,11 +55,11 @@ int __corenet_port__ = -1;
  * @param sockid
  * @return
  */
-int corenet_tcp_connect(const nid_t *nid, uint32_t addr, uint32_t port, sockid_t *sockid)
+int corenet_tcp_connect(const coreid_t *coreid, uint32_t addr, uint32_t port,
+                        sockid_t *sockid)
 {
         int ret;
         net_handle_t nh;
-        core_t *core = core_self();
         corenet_msg_t msg;
         corerpc_ctx_t *ctx;
         struct sockaddr_in sin;
@@ -69,6 +72,10 @@ int corenet_tcp_connect(const nid_t *nid, uint32_t addr, uint32_t port, sockid_t
 
         DINFO("connect %s:%u\n", inet_ntoa(sin.sin_addr), ntohs(port));
 
+        ret = core_getid(&msg.from);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
         ret = tcp_sock_connect(&nh, &sin, 0, 3, 0);
         if (unlikely(ret)) {
                 DINFO("try to connect %s:%u (%u) %s\n", inet_ntoa(sin.sin_addr),
@@ -78,9 +85,7 @@ int corenet_tcp_connect(const nid_t *nid, uint32_t addr, uint32_t port, sockid_t
         
         YASSERT(strlen(gloconf.uuid) < UUID_LEN);
 
-        msg.hash = core->hash;
-        msg.from = *net_getnid();
-        msg.to = *nid;
+        msg.to = *coreid;
         strncpy(msg.uuid, gloconf.uuid, UUID_LEN);
 
         ret = send(nh.u.sd.sd, &msg, sizeof(msg), 0);
@@ -106,9 +111,9 @@ int corenet_tcp_connect(const nid_t *nid, uint32_t addr, uint32_t port, sockid_t
         sockid->rdma_handler = 0;
 #endif
         ctx->sockid = *sockid;
-        ctx->nid = *nid;
+        ctx->coreid = *coreid;
         ret = corenet_tcp_add(NULL, sockid, ctx, corerpc_recv, corerpc_close,
-                              NULL, NULL, network_rname(nid));
+                              NULL, NULL, network_rname(&coreid->nid));
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
 
@@ -156,29 +161,23 @@ STATIC void *__corenet_accept__(void *arg)
         }
 
         YASSERT(sizeof(*msg) == ret);
-        YASSERT(nid_cmp(&msg->to, net_getnid()) == 0);
+        YASSERT(coreid_cmp(&msg->to, &ctx->local) == 0);
 
         ret = tcp_sock_tuning(sockid->sd, 1, YNET_RPC_NONBLOCK);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        core = core_get(msg->hash);
+        core = core_get(msg->to.idx);
 #if ENABLE_RDMA
         sockid->rdma_handler = 0;
 #endif
-        ctx->nid = msg->from;
+        ctx->coreid = msg->from;
 
-#if 0
-        ret = corenet_maping_accept(core, &msg->from, sockid, 1);
-        if (unlikely(ret)) {
-                UNIMPLEMENTED(__DUMP__);
-        }
-#endif
-
-        DINFO("hash %d core:%p maping:%p, sd %u\n", msg->hash, core, core->maping, sockid->sd);
+        DINFO("core[%d] %p maping:%p, sd %u\n", msg->to.idx, core,
+              core->maping, sockid->sd);
         
-        ret = corenet_tcp_add(core->tcp_net, sockid, ctx, corerpc_recv,
-                              corerpc_close, NULL, NULL, network_rname(&ctx->nid));
+        ret = corenet_attach(core->corenet, sockid, ctx, corerpc_recv,
+                             corerpc_close, NULL, NULL, network_rname(&ctx->coreid.nid));
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
 
@@ -190,7 +189,7 @@ err_ret:
         return NULL;
 }
 
-static int __corenet_accept()
+static int __corenet_accept(const __corenet_tcp_t *corenet_tcp)
 {
         int ret, sd;
         socklen_t alen;
@@ -200,7 +199,7 @@ static int __corenet_accept()
         _memset(&sin, 0, sizeof(sin));
         alen = sizeof(struct sockaddr_in);
 
-        sd = accept(__listen_sd__, &sin, &alen);
+        sd = accept(corenet_tcp->sd, &sin, &alen);
         if (sd < 0 ) {
                 ret = errno;
 		GOTO(err_ret, ret);
@@ -215,7 +214,8 @@ static int __corenet_accept()
         ctx->sockid.type = SOCKID_CORENET;
         ctx->sockid.seq = _random();
         ctx->sockid.addr = sin.sin_addr.s_addr;
-        ctx->nid.id = 0;
+        ctx->coreid.nid.id = 0;
+        ctx->local = corenet_tcp->coreid;
 
         ret = sy_thread_create2(__corenet_accept__, ctx, "__corenet_accept");
         if (unlikely(ret))
@@ -229,14 +229,14 @@ err_ret:
 static void *__corenet_passive(void *_arg)
 {
         int ret;
+        __corenet_tcp_t *corenet_tcp = _arg;
 
-        (void) _arg;
         DINFO("start...\n");
 
         main_loop_hold();
 
         while (1) {
-                ret = sock_poll_sd(__listen_sd__, 1000 * 1000, POLLIN);
+                ret = sock_poll_sd(corenet_tcp->sd, 1000 * 1000, POLLIN);
                 if (unlikely(ret)) {
                         if (ret == ETIMEDOUT || ret == ETIME)
                                 continue;
@@ -246,7 +246,7 @@ static void *__corenet_passive(void *_arg)
 
                 DINFO("got new event\n");
 
-                __corenet_accept();
+                __corenet_accept(corenet_tcp);
         }
 
         return NULL;
@@ -255,23 +255,55 @@ err_ret:
         return NULL;
 }
 
-static char __corenet_info__[MAX_INFO_LEN] = {0};
+#define NETINFO_TIMEOUT (10 * 60)
 
-int corenet_tcp_passive()
+int corenet_tcp_getaddr(uint32_t port, corenet_addr_t *addr)
 {
-        int ret, port;
-        char _port[MAX_BUF_LEN];
+        int ret;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        ynet_net_info_t *info;
+        uint32_t buflen = MAX_BUF_LEN;
 
-        memset(__corenet_info__, 0x0, sizeof(__corenet_info__));
+        ret = core_getid(&addr->coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        info = (ynet_net_info_t *)buf;
+        ret = net_getinfo(buf, &buflen, port);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        for (int i = 0; i < info->info_count; i++) {
+                addr->info[i] = info->info[i];
+                DINFO("core[%u] port %d addr %u:%u\n", addr->coreid.idx,
+                      port, addr->info[i].addr, addr->info[i].port);
+        }
+
+        addr->info_count = info->info_count;
+        addr->len = sizeof(*addr) + sizeof(ynet_sock_info_t) * info->info_count;
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+int corenet_tcp_passive(const coreid_t *coreid, uint32_t *_port, int *_sd)
+{
+        int ret, sd, port;
+        char tmp[MAX_LINE_LEN];
         
-        while (1) {
+        port = YNET_PORT_RANDOM;
+        while (srv_running) {
                 port = (uint16_t)(YNET_SERVICE_BASE
                                   + (random() % YNET_SERVICE_RANGE));
 
                 YASSERT(port > YNET_SERVICE_RANGE && port < 65535);
-                snprintf(_port, MAX_LINE_LEN, "%u", port);
+                snprintf(tmp, MAX_LINE_LEN, "%u", port);
 
-                ret = tcp_sock_hostlisten(&__listen_sd__, NULL, _port,
+                ret = tcp_sock_hostlisten(&sd, NULL, tmp,
                                           YNET_QLEN, YNET_RPC_BLOCK, 1);
                 if (unlikely(ret)) {
                         if (ret == EADDRINUSE) {
@@ -280,58 +312,27 @@ int corenet_tcp_passive()
                                 continue;
                         } else
                                 GOTO(err_ret, ret);
+                } else {
+                        break;
                 }
-                
-                DINFO("listen %u, nid %u\n", port, net_getnid()->id);
-                __corenet_port__ = port;
-                break;
         }
-        
-        ret = sy_thread_create2(__corenet_passive, NULL, "corenet_passive");
+
+        *_port = port;
+        *_sd = sd;
+
+        __corenet_tcp_t *corenet_tcp;
+        ret = ymalloc((void **)&corenet_tcp, sizeof(*corenet_tcp));
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                UNIMPLEMENTED(__DUMP__);
 
-        return 0;
-err_ret:
-        return ret;
-}
-
-#define NETINFO_TIMEOUT (10 * 60)
-
-int corenet_tcp_getinfo(char *infobuf, uint32_t *infobuflen)
-{
-        int ret;
-        uint32_t port = __corenet_port__;
-        ynet_net_info_t *info;
-        char _buf[MAX_BUF_LEN];
+        corenet_tcp->coreid = *coreid;
+        corenet_tcp->sd = sd;
         
-        if (__corenet_info__[0] == '\0' ||  gettime() - ng.info_time > NETINFO_TIMEOUT) {
-                YASSERT(port);
-                
-                ret = net_getinfo(infobuf, infobuflen, port);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+        ret = sy_thread_create2(__corenet_passive, corenet_tcp, "corenet_passive");
+        if (unlikely(ret))
+                UNIMPLEMENTED(__DUMP__);
 
-                memcpy(__corenet_info__, infobuf, *infobuflen);
-        } else {
-                memcpy(_buf, __corenet_info__, sizeof(__corenet_info__));
-                info = (ynet_net_info_t *)_buf;
-
-                if (net_isnull(&info->id) && !net_isnull(net_getnid()))
-                        info->id = *net_getnid();
-
-                _memcpy(infobuf, info, info->len);
-                *infobuflen = info->len;
-
-                YASSERT(strcmp(info->name, "none"));
-        }
-
-        info = (void *)infobuf;
-        YASSERT(info->info_count);
-        YASSERT(info->info[0].port);
-        YASSERT(info->info[0].addr);
-        DBUG("port %d, %u\n", ntohs(info->info[0].port), __corenet_port__);
-        ((ynet_net_info_t *)infobuf)->deleting = 0;
+        //DINFO("listen %u, nid %u\n", port, net_getnid()->id);
 
         return 0;
 err_ret:

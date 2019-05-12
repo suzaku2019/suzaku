@@ -23,7 +23,7 @@
 #define ETCD_ROOT       "/sdfs"
 #define ETCD_STORAGE    "storage"
 #define ETCD_NODE       "node"
-#define ETCD_CONN       "network/conn"
+#define ETCD_CONN       "network/addr"
 #define ETCD_TRANS      "trans"
 #define ETCD_RECYCLE    "recycle"
 #define ETCD_MISC       "misc"
@@ -50,9 +50,10 @@ typedef struct{
         char key[MAX_PATH_LEN];
 } etcd_lock_t;
 
-int etcd_mkdir(const char *dir, int ttl);
+int etcd_mkdir(const char *prefix, const char *dir, int ttl);
 int etcd_readdir(const char *_key, char *buf, int *buflen);
 
+int etcd_list1(const char *prefix, const char *_key, etcd_node_t **_node);
 int etcd_list(const char *_key, etcd_node_t **_node);
 int etcd_count(int *num_servers, const char *key);
 int etcd_del(const char *prefix, const char *_key);
@@ -75,11 +76,17 @@ int etcd_locker(etcd_lock_t *lock, char *locker, nid_t *nid, uint32_t *_magic, i
 int etcd_lock_watch(etcd_lock_t *lock, char *value, nid_t *nid, uint32_t *magic, int *idx);
 int etcd_lock_health(etcd_lock_t *lock);
 
+#if 0
 int etcd_set_with_ttl(const char *prefix, const char *key, const char *val, int ttl);
+#endif
 
 int etcd_init();
 
 int etcd_cluster_node_count(int *node_count);
 int etcd_is_proxy();
+int etcd_set_bin(const char *prefix, const char *_key, const void *_value,
+                 int valuelen, int flag, int ttl);
+int etcd_set_text(const char *prefix, const char *_key, const char *_value,
+                  int flag, int ttl);
 
 #endif

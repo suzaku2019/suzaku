@@ -211,7 +211,7 @@ static char *get_quota_type(int quota_type)
 static void print_quota_info(const char *path, const fileid_t *fileid, const quota_t *quota)
 {
         fprintf(stdout, "path:%s fileid: %llu_v%llu\n",
-                        path, (LLU)fileid->id, (LLU)fileid->volid);
+                        path, (LLU)fileid->id, (LLU)fileid->poolid);
 
         fprintf(stdout, "-----------------------------------\n");
 

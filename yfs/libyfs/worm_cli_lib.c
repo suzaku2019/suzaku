@@ -43,7 +43,7 @@ int get_wormfileid_by_fid_cli(const uint64_t fid,
 
         fileid->id = fid;
         fileid->idx = 0;
-        fileid->volid = subfileid->volid;
+        fileid->poolid = subfileid->poolid;
 
         return 0;
 }

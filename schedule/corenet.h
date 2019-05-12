@@ -10,6 +10,7 @@
 #include "../sock/ynet_sock.h"
 #include "cache.h"
 #include "core.h"
+#include "corenet_connect.h"
 #include "plock.h"
 #include "ylock.h"
 #include "ynet_net.h"
@@ -207,5 +208,12 @@ int corenet_rdma_connect_by_channel(const nid_t *nid, uint32_t addr, const char 
 void corenet_rdma_timewait_exit(struct rdma_cm_event *ev, void *core);
 void corenet_rdma_connect_request(struct rdma_cm_event *ev, void *core);
 #endif
+
+int corenet_init();
+int corenet_getaddr(const coreid_t *coreid, corenet_addr_t *addr);
+int corenet_attach(void *_corenet, const sockid_t *sockid, void *ctx,
+                   core_exec exec, func_t reset, func_t check, func_t recv,
+                   const char *name);
+int corenet_send(void *ctx, const sockid_t *sockid, buffer_t *buf, int flag);
 
 #endif

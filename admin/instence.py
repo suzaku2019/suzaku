@@ -12,12 +12,12 @@ import statvfs
 from config import Config
 from utils import Exp, derror, dwarn, dmsg, set_value, get_value, \
         exec_shell, exec_pipe
-from redisd import Redisd, RedisDisk
+from disk import DiskOp
 
 class Instence(object):
     def __init__(self, role, i, config=None):
         """
-        初始化中，不能创建cds/idx 或 mond/idx 目录
+        初始化中，不能创建bactl/idx 或 mdctl/idx 目录
         """
         self.config = config
         if self.config is None:
@@ -26,26 +26,18 @@ class Instence(object):
         self.service = int(i)
         self.cmd = None
         self.home = None
-        if self.role == "mond":
-            self.cmd = self.config.uss_mond
-            self.home = os.path.join(self.config.home, "data/%s/%s" % (self.role, self.service))
-            os.system("touch %s/fake" % (self.home))
-        elif self.role == "cds":
-            self.cmd = self.config.uss_cds
-            self.home = os.path.join(self.config.home, "data/%s/%s" % (self.role, self.service))
-        elif self.role == "nfs":
-            os.system("mkdir -p %s/data/nfs/0" % (self.config.home))
-            self.cmd = self.config.uss_ynfs
-            self.home = os.path.join(self.config.home, "data/nfs/0")
-        elif self.role == "ftp":
-            os.system("mkdir -p %s/data/ftp/0" % (self.config.home))
-            self.cmd = self.config.uss_ftp
-            self.home = os.path.join(self.config.home, "data/ftp/0")
-        elif self.role == "redis":
-            os.system("mkdir -p %s/data/redis" % (self.config.home))
-            self.cmd = None
-            self.home = os.path.join(self.config.home, "data/%s/%s" % (self.role, self.service))
+        if self.role == "mdctl":
+            self.cmd = self.config.uss_mdctl
+            self.home = os.path.join(self.config.home, "data/%s" % (self.role))
+        elif self.role == "bactl":
+            self.cmd = self.config.uss_bactl
+            self.home = os.path.join(self.config.home, "data/%s" % (self.role))
+        elif self.role == "frctl":
+            os.system("mkdir -p %s/data/frctl" % (self.config.home))
+            self.cmd = self.config.uss_yfrctl
+            self.home = os.path.join(self.config.home, "data/frctl")
 
+        print (self.role, self.home)
         #print [self.home, self.cmd, self.role]
         self.name = self.home
         self.disk_status = 0;
@@ -68,22 +60,6 @@ class Instence(object):
         except Exception, e:
             derror(e)
             self.disk_status = errno.EIO;
-
-        if ((self.role in ['cds', 'mond'])
-           and (not os.path.exists(self.home + "/fake"))
-           and (self.config.check_mountpoint)):
-            if (os.stat(self.home).st_dev == os.stat(self.home + "/..").st_dev):
-                self.nomount = True
-
-        #print (self.role, self.home)
-        if (os.path.exists(self.home + "/deleting")):
-            self.deleting = True
-
-        if (os.path.exists(self.home + "/deleted_ok")):
-            self.deleted = True
-
-        if (os.path.exists(self.home + "/skip")):
-            self.skiped = True
 
     def __getpid(self, ttyonly=False):
         max_retry = 1000
@@ -118,14 +94,6 @@ class Instence(object):
         if (self.disk_status):
             return False
 
-        if (self.role == 'redis'):
-            redisdisk = RedisDisk(self.home)
-            res = redisdisk.status()
-            if (res):
-                return True
-            else:
-                return False
-        
         path = self.home + "/status/status"
         try:
             fd = open(path, 'r')
@@ -151,30 +119,23 @@ class Instence(object):
         fd.close()
         return False
 
+    def start_redis(self):
+        diskop = DiskOp()
+        diskop.start_redis()
+        
     def _start(self, ttyonly=False):
-        if (self.role == 'redis'):
-            #优化redis
-            cmd = "eval 'sysctl vm.overcommit_memory=1'"
-            os.system(cmd)
-
-            #优化redis
-            cmd = "eval 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' 2>/dev/null"
-            os.system(cmd)
-            return
-
         cmd = None
-        if self.role == "mond":
-            cmd = "%s -n %s" % (self.config.uss_mond, self.service)
-        elif self.role == "cds":
-            cmd = "%s -n %s" % (self.config.uss_cds, self.service)
-        elif self.role == "nfs":
-            cmd = "systemctl start rpcbind"
-            exec_shell(cmd)
+        if self.role == "mdctl":
+            cmd = "%s --home %s" % (self.config.uss_mdctl, self.home)
+        elif self.role == "bactl":
+            self.start_redis()
+            
+            cmd = "%s --home %s" % (self.config.uss_bactl, self.home)
+        elif self.role == "frctl":
+            #cmd = "systemctl start rpcbind"
+            #exec_shell(cmd)
 
-            cmd = "%s --home %s" % (self.config.uss_ynfs, self.home)
-        elif self.role == "ftp":
-            cmd = "%s --home %s" % (self.config.uss_ftp, self.home)
-
+            cmd = "%s --home %s" % (self.config.uss_yfrctl, self.home)
         if (self.disk_status):
             derror(' * %s [disk error]' % (cmd), ttyonly)
             return 1
@@ -283,7 +244,7 @@ class Instence(object):
         return str(rs).strip()
 
     def get_total(self):
-        if 'cds' in self.home:
+        if 'bactl' in self.home:
             vfs = os.statvfs(self.home)
             total = vfs[statvfs.F_BLOCKS] * vfs[statvfs.F_BSIZE] / (1024)
         else:
@@ -292,7 +253,7 @@ class Instence(object):
         return total
 
     def get_used(self):
-        if 'cds' in self.home:
+        if 'bactl' in self.home:
             vfs = os.statvfs(self.home)
             total = vfs[statvfs.F_BLOCKS] * vfs[statvfs.F_BSIZE] / (1024)
             free = vfs[statvfs.F_BFREE] * vfs[statvfs.F_BSIZE] / (1024)
@@ -301,24 +262,6 @@ class Instence(object):
             used = 0
 
         return used
-
-"""
-    def get_total(self):
-        cmd = "df |grep '%s$'|awk '{print $2}'" % (self.home)
-        rs = self._get_rs(cmd)
-        if rs:
-            return int(rs)
-        else:
-            return 0
-
-    def get_used(self):
-        cmd = "df |grep '%s$'|awk '{print $3}'" % (self.home)
-        rs = self._get_rs(cmd)
-        if rs:
-            return int(rs)
-        else:
-            return 0
-"""
 
 if __name__ == "__main__":
     print "hello, word!"

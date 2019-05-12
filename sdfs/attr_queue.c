@@ -40,7 +40,7 @@ typedef struct {
 typedef struct {
         plock_t plock;
         time_t update;
-        hashtable_t tab;
+        htab_t tab;
         struct list_head list;
         int count;
 
@@ -101,7 +101,7 @@ static int __attr_queue_create(attr_queue_t *attr_queue, const volid_t *volid,
         memset(ent, 0x0, sizeof(*ent));
         INIT_LIST_HEAD(&ent->wait_list);
 
-        ent->volid = *volid;
+        ent->poolid = *volid;
         ent->fileid = *fileid;
         YASSERT(fileid->type);
         
@@ -109,7 +109,7 @@ static int __attr_queue_create(attr_queue_t *attr_queue, const volid_t *volid,
 
         DBUG("add "CHKID_FORMAT"\n", CHKID_ARG(&ent->fileid));
 
-        ret = hash_table_insert(attr_queue->tab, (void *)ent, (void *)&ent->fileid, 0);
+        ret = htab_insert(attr_queue->tab, (void *)ent, (void *)&ent->fileid, 0);
         if (ret)
                 UNIMPLEMENTED(__DUMP__);
         
@@ -130,7 +130,7 @@ static void __attr_queue_remove(attr_queue_t *attr_queue, entry_t *ent)
 
         DBUG("remove "CHKID_FORMAT" %p\n", CHKID_ARG(&ent->fileid), ent);
         
-        ret = hash_table_remove(attr_queue->tab, (void *)&ent->fileid, (void **)&tmp);
+        ret = htab_remove(attr_queue->tab, (void *)&ent->fileid, (void **)&tmp);
         YASSERT(ret == 0);
 
         list_del(&ent->hook);
@@ -175,14 +175,14 @@ static int __attr_queue(const volid_t *volid, const fileid_t *fileid, int op, co
         
         DBUG("queue "CHKID_FORMAT"\n", CHKID_ARG(fileid));
 
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 //UNIMPLEMENTED(__WARN__);
                 volid = &_volid;
         }
 
 retry:
-        ent = hash_table_find(attr_queue->tab, (void *)fileid);
+        ent = htab_find(attr_queue->tab, (void *)fileid);
         if (ent) {
                 if (ent->running) {
                         ret = __attr_wait(ent);
@@ -240,7 +240,7 @@ int attr_queue_update(const volid_t *volid, const fileid_t *fileid, void *_md)
         
         (void) volid;
         
-        ent = hash_table_find(attr_queue->tab, (void *)fileid);
+        ent = htab_find(attr_queue->tab, (void *)fileid);
         if (ent == NULL) {
                 return 0;
         }
@@ -289,7 +289,7 @@ static void __attr_queue_run__(entry_t *ent)
         }
 
 retry:
-        ret = md_setattr(&ent->volid, &ent->fileid, &setattr, 1);
+        ret = md_setattr(&ent->poolid, &ent->fileid, &setattr, 1);
         
         if (ret) {
                 ret = _errno(ret);
@@ -382,7 +382,7 @@ static int __attr_queue_init(attr_queue_t *attr_queue)
 {
         int ret;
 
-        attr_queue->tab = hash_create_table(__cmp, __key, "cds vol");
+        attr_queue->tab = htab_create(__cmp, __key, "cds vol");
         if (attr_queue->tab == NULL) {
                 ret = ENOMEM;
                 GOTO(err_ret, ret);
@@ -445,7 +445,7 @@ int attr_queue_destroy()
                 attr_queue->kv = NULL;
         }
         
-        hash_destroy_table(attr_queue->tab, NULL, NULL);
+        htab_destroy(attr_queue->tab, NULL, NULL);
         attr_queue->tab = NULL;
         DBUG("attr queue %p destroy\n", attr_queue);
         yfree((void **)&attr_queue);

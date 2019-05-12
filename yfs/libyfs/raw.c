@@ -17,20 +17,20 @@
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
-#include "yfs_file.h"
-#include "cache.h"
 #include "sdfs_lib.h"
 #include "network.h"
 #include "yfs_limit.h"
-#include "dbg.h"
+#include "net_table.h"
 #include "worm_cli_lib.h"
-#include "mond_rpc.h"
+#include "mds_rpc.h"
 #include "main_loop.h"
 #include "posix_acl.h"
 #include "flock.h"
 #include "xattr.h"
+#include "dbg.h"
 
-int normalize_path(const char *path, char *path2) {
+int normalize_path(const char *path, char *path2)
+{
         int i, len, begin, off;
 
         len = strlen(path);
@@ -158,7 +158,7 @@ int __chk_locate(char *loc, const chkid_t *chkid, const diskid_t *nid)
         (void) cascade_id2path(cpath, MAX_PATH_LEN, chkid->id);
 
         snprintf(loc, MAX_PATH_LEN, "%s: %s/cds/%u/disk/*%s_v%llu/%u", ip, SDFS_HOME,
-                 seq, cpath, (LLU)chkid->volid, chkid->idx);
+                 seq, cpath, (LLU)chkid->poolid, chkid->idx);
 
         return 0;
 }
@@ -183,7 +183,7 @@ int raw_printfile(fileid_t *fileid, uint32_t _chkno)
                 GOTO(err_ret, ret);
 
         snprintf(key, MAX_BUF_LEN, USS_SYSTEM_ATTR_ENGINE);
-        id2vid(fileid->volid, &volume_dir_id);
+        id2vid(fileid->poolid, &volume_dir_id);
         size = sizeof(value);
         ret = sdfs_getxattr(NULL, &volume_dir_id, key, value, &size);
         if (0 == ret) {
@@ -205,18 +205,18 @@ int raw_printfile(fileid_t *fileid, uint32_t _chkno)
                                 continue;
                         }
 
-                        printf("    chk[%u] rep %u status %x, master %u\n",
-                               chkid.idx, chkinfo->repnum, chkinfo->status, chkinfo->master);
+                        printf("    chk[%u] rep %u\n",
+                               chkid.idx, chkinfo->repnum);
 
                         for (i = 0; i < chkinfo->repnum; i++) {
-                                if (__chk_locate(loc, &chkid, &chkinfo->diskid[i]) != 0) {
+                                if (__chk_locate(loc, &chkid, &chkinfo->diskid[i].id) != 0) {
                                         printf("        net[%u] nid("DISKID_FORMAT"): offline\n",
-                                               i, DISKID_ARG(&chkinfo->diskid[i]));
+                                               i, DISKID_ARG(&chkinfo->diskid[i].id));
                                         continue;
                                 } else {
                                         printf("        net[%u] nid("DISKID_FORMAT"): %s %s\n",
                                                i,
-                                               DISKID_ARG(&chkinfo->diskid[i]),
+                                               DISKID_ARG(&chkinfo->diskid[i].id),
                                                loc,
                                                (chkinfo->diskid[i].status & __S_DIRTY) ?
                                                "dirty" : "available");
@@ -233,18 +233,18 @@ int raw_printfile(fileid_t *fileid, uint32_t _chkno)
                         GOTO(err_ret, ret);
                 }
 
-                printf("    chk[%u] rep %u status %x, master %u\n",
-                       chkid.idx, chkinfo->repnum, chkinfo->status, chkinfo->master);
+                printf("    chk[%u] rep %u\n",
+                       chkid.idx, chkinfo->repnum);
 
                 for (i = 0; i < chkinfo->repnum; i++) {
-                        if (__chk_locate(loc, &chkid, &chkinfo->diskid[i]) != 0) {
+                        if (__chk_locate(loc, &chkid, &chkinfo->diskid[i].id) != 0) {
                                 printf("        net[%u] nid("DISKID_FORMAT"): offline\n", i,
-                                       DISKID_ARG(&chkinfo->diskid[i]));
+                                       DISKID_ARG(&chkinfo->diskid[i].id));
                                 continue;
                         } else {
                                 printf("        net[%u] nid("DISKID_FORMAT"): %s, %s\n",
                                        i,
-                                       DISKID_ARG(&chkinfo->diskid[i]),
+                                       DISKID_ARG(&chkinfo->diskid[i].id),
                                        loc,
                                        (chkinfo->diskid[i].status & __S_DIRTY) ? "dirty" : "available" );
                         }
@@ -288,17 +288,17 @@ int raw_printfile1(fileid_t *fileid)
                         continue;
                 }
 
-                printf("    chk[%u]  "CHKID_FORMAT"  repnum %u  status %x, master %u\n",
-                       chkid.idx, CHKID_ARG(&chkinfo->chkid), chkinfo->repnum, chkinfo->status, chkinfo->master);
+                printf("    chk[%u]  "CHKID_FORMAT"  repnum %u\n",
+                       chkid.idx, CHKID_ARG(&chkinfo->chkid), chkinfo->repnum);
 
                 for (i = 0; i < chkinfo->repnum; i++) {
-                        if (__chk_locate(loc, &chkid, &chkinfo->diskid[i]) != 0) {
+                        if (__chk_locate(loc, &chkid, &chkinfo->diskid[i].id) != 0) {
                                 printf("        net[%u] nid( "DISKID_FORMAT" ): offline\n", i,
-                                       DISKID_ARG(&chkinfo->diskid[i]));
+                                       DISKID_ARG(&chkinfo->diskid[i].id));
                                 continue;
                         } else {
                                 printf("        net[%u] nid("DISKID_FORMAT"): %s %s\n", i,
-                                       DISKID_ARG(&chkinfo->diskid[i]),
+                                       DISKID_ARG(&chkinfo->diskid[i].id),
                                        loc,
                                        (chkinfo->diskid[i].status & __S_DIRTY) ?
                                        "dirty" : "available");
@@ -353,6 +353,7 @@ err_ret:
         return ret;
 }
 
+#if 0
 int raw_create_quota(quota_t *quota)
 {
         return md_create_quota(quota);
@@ -379,6 +380,7 @@ int raw_modify_quota(const fileid_t *quotaid, quota_t *quota, uint32_t modify_ma
 {
         return md_modify_quota(quotaid, quota, modify_mask);
 }
+#endif
 
 #if ENABLE_WORM
 int raw_set_wormid(const fileid_t *fileid)
@@ -535,31 +537,3 @@ char *sdfs_realpath(const char *path, char *resolved_path)
 
         return resolved_path;
 }
-
-#if 0
-int raw_flock_op(const fileid_t *fileid,
-                 uss_flock_op_t flock_op,
-                 struct flock *flock,
-                 const uint64_t owner)
-{
-        int ret = 0, retry = 0, retry_max = 30;
-        uss_flock_t uss_flock;
-
-        uss_flock.sid = net_getnodeid();
-        uss_flock.owner = owner;
-        flock_to_ussflock(flock, &uss_flock);
-
-retry:
-        ret = md_flock_op(fileid, flock_op, &uss_flock);
-        if (0 == ret && USS_GETFLOCK == flock_op)
-                ussflock_to_flock(&uss_flock, flock);
-
-        if NEED_EAGAIN(ret) {
-                SLEEP_RETRY3(err_ret, ret, retry, retry, retry_max);
-        }
-
-err_ret:
-        return ret;
-}
-#endif
-

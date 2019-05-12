@@ -15,15 +15,9 @@
 #include "get_version.h"
 #include "shadow.h"
 #include "ylib.h"
-#include "yfsmds_conf.h"
 #include "ylog.h"
 #include "dbg.h"
 #include "nodectl.h"
-
-#define LOG_DRBD_PRIMARY  SDFS_HOME"/log/drbd_primary.log"
-#define LOG_DRBD_SECONDARY  SDFS_HOME"/log/drbd_secondary.log"
-#define LOG_DRBD_CHECK  SDFS_HOME"/log/drbd_check.log"
-#define LOG_REDIS  SDFS_HOME"/log/redis.log"
 
 #define NODECTL_PREFIX "/dev/shm/sdfs/"
 

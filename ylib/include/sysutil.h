@@ -185,7 +185,7 @@ int _is_dir(const char *path);
 int _file_writezero(const char *path, off_t off, size_t size);
 int _file_writezero2(int fd, off_t off, size_t size);
 
-int _lock_file(const char *key, int flag);
+int _lock_file(const char *key, int lflag, int cflag);
 int _sha1_file(int fd, uint64_t offset, uint32_t size, unsigned char *md);
 
 int _mkstemp(char *path);

@@ -33,7 +33,9 @@
 typedef struct {
         int running;
         sockid_t sockid;
-        nid_t nid;
+        coreid_t coreid;
+        coreid_t local;
+        void *corenet;
 } corerpc_ctx_t;
 
 enum corerp_opcode {
@@ -44,8 +46,9 @@ enum corerp_opcode {
 // rpc table
 void corerpc_register(int type, net_request_handler handler, void *context);
 
-int corerpc_postwait(const char *name, const nid_t *nid, const void *request,
-                     int reqlen, const buffer_t *wbuf, buffer_t *rbuf, int msg_type, int msg_size, int timeout);
+int corerpc_postwait(const char *name, const coreid_t *coreid, const void *request,
+                     int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
+                     int msg_type, int msg_size, int timeout);
 
 // sockid-based
 int corerpc_send_and_wait(void *ctx, const char *name, const sockid_t *sockid,
@@ -68,7 +71,7 @@ void corerpc_destroy(rpc_table_t **_rpc_table);
 
 
 //rpc table
-int corerpc_init(const char *name, core_t *core);
+int corerpc_init();
 #if ENABLE_RDMA
 void corerpc_rdma_reset(const sockid_t *sockid);
 int corerpc_rdma_recv_msg(void *_ctx, void *iov, int *_count);

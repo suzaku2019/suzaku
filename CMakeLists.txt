@@ -41,35 +41,27 @@ set(CMAKE_C_FLAGS "-W -Wall -DDEBUG -g -fPIC -Werror -Wno-implicit-fallthrough -
 
 #set(CMAKE_C_FLAGS "-W -Wall -DDEBUG -g -O3 -fPIC -Werror -Wno-stringop-truncation -Wno-stringop-overflow -Wno-implicit-fallthrough -Werror=return-type -Wno-format-truncation -Wno-format-overflow -Wno-misleading-indentation -Wno-deprecated-declarations -Wno-cast-function-type -Wno-int-in-bool-context -Wno-pointer-compare -D_GNU_SOURCE -D_REENTRANT -D_FILE_OFFSET_BITS=64 -std=c99 -fms-extensions -gsplit-dwarf")
 
-set(CMAKE_C_LIBS sdfs pthread crypt crypto uuid ssl isal z jemalloc m curl yajl attr hiredis tirpc)
+set(CMAKE_C_LIBS sdfs pthread crypt crypto uuid ssl z m curl yajl hiredis)
 
 include_directories(
     /usr/local/include
     #/usr/include/tirpc/
     #${CMAKE_CURRENT_SOURCE_DIR}/license/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/itest/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfuse/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfuse3/include
     ${CMAKE_CURRENT_SOURCE_DIR}/test/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/yftp/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule
-    ${CMAKE_CURRENT_SOURCE_DIR}/mond
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs
     ${CMAKE_CURRENT_SOURCE_DIR}/cds
     ${CMAKE_CURRENT_SOURCE_DIR}/parser/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/yweb/include
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ynet/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds
     ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc
     ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/
+    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs
     ${CMAKE_CURRENT_BINARY_DIR}/
 )
 
@@ -83,14 +75,14 @@ add_library(sdfs SHARED
 
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/kv.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/timer.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/redis_util.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/redis_util.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/worker.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/job_dock.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/auth.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/array_table.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/buffer.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ec_isa_l.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ec_isa_l.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cmp.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ll.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/crc32.c
@@ -98,11 +90,9 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/daemon.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/dbg.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/hash.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/hash_table.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/htable.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cache.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/htab.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cache.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/job_tracker.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/journal.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/lock.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mem.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mem_cache.c
@@ -122,7 +112,6 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/bmap.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/privilege.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/md5.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/squeue.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/analysis.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mini_hashtb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/bh.c
@@ -136,6 +125,8 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cJSON.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/aio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/core_latency.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet_tcp.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet_connect_tcp.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet_maping.c
@@ -145,7 +136,6 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/gettime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/schedule_thread.c
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule/variable.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/schedule/vm.c
 
     #------ynet------
 
@@ -186,38 +176,44 @@ add_library(sdfs SHARED
     #------sdfs------
 
     #${CMAKE_CURRENT_SOURCE_DIR}/license/src/aes.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_co.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_pipeline.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_vol.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_conn.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_co.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_pipeline.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_vol.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_conn.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_attr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/dir_redis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/chunk_redis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/inode_redis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/kv_redis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/attr_queue.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/dir_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/chunk_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/inode_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/kv_etcd.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/chunk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/chunk_replica.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/allocator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/io_analysis.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_inode.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_dir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/vss.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/volume.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/vs_chunk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range_ctl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range_rpc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/cds/cds_rpc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_chunk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_chunk_recovery.c
     #${CMAKE_CURRENT_SOURCE_DIR}/license/src/license_helper.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_dir.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_vol.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_node.c
     #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_super.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_chunk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_file.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_user.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_group.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_quota.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_root.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_share.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_user.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_group.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_quota.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_share.c
     #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_lvm_qos.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/dir.c
@@ -228,146 +224,67 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/file_table.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/yfs_lib.c
     #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/worm_cli_lib.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/quota.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/user.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/group.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/posix_acl.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/quota.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/user.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/group.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/posix_acl.c
     #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/flock.c
 
     #------cds------
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/cds.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/cds_volume.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/cds_hb.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/cds_lib.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/disk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/chkinfo.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/dpool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/replica.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/cds.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/cds/cds_hb.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_alloc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_read.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_fs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_redis.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_raw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_raw_aio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_io.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/cds/diskid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/cds/diskio.c
 
-    #------mond------
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds_main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/disk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/diskpool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/nodepool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/nodepool_hdd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/nodepool_ssd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mond/mond_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mond/mond_kv.c
+    #------mds------
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_kv.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_lease.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/lease_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/lease_cli.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/partition.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/ringlock_srv.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/ringlock_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/ringlock.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/pa_srv.c
 )
 
 set (MDS_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_main.c
 )
 
 set (CDS_SRC_LIST
-	${CMAKE_CURRENT_SOURCE_DIR}/yfs/cds/main.c
+	${CMAKE_CURRENT_SOURCE_DIR}/cds/main.c
 )
 
-set (YNFS_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/xdr_nlm.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm4.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_async.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_lkcache.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_nsm.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/nfs/hostcache.c
-
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/xdr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/sunrpc_passive.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/sunrpc_reply.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/sunrpc_proto.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/attr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/error.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/readdir.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nfs_events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/mountlist.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/nfs/nfs_state_machine.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nfs3.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nfs_mount.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nfs_remove.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/xdr_nfs.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/nfs/nfs_proc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/main.c
+set (FRCTL_SRC_LIST
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/main.c
 )
 
-set (YNLM_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_state_machine.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/xdr_nlm.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_lkcache.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/nlm_nsm.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/nfs/hostcache.c
-)
 
-set (YFTP_SRC_LIST
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/main.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/ftpfeatures.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/prelogin.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/postlogin.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/cmdio.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/dataio.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yftp/src/session.c
-	${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/md5.c
-)
-set (YWEB_SRC_LIST
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/main.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/http_ops.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/http_proto.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/http_readdir.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/http_state_machine.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/match.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/mime.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/request.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/response.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/str.c
-	${CMAKE_CURRENT_SOURCE_DIR}/yweb/src/tdate_parse.c
-)
+add_executable(sdfs.mdctl ${MDS_SRC_LIST})
+target_link_libraries(sdfs.mdctl ${CMAKE_C_LIBS} hiredis)
 
-set (YFUSE_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfuse/src/main.c
-)
+add_executable(sdfs.bactl ${CDS_SRC_LIST})
+target_link_libraries(sdfs.bactl ${CMAKE_C_LIBS})
 
-LINK_DIRECTORIES("/usr/local/lib")
-set (YFUSE3_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfuse3/src/main.c
-)
-
-set (YLICENSE_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.license.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/license/src/license_helper.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/license/src/aes.c
-)
-
-add_executable(sdfs.mond ${MDS_SRC_LIST})
-target_link_libraries(sdfs.mond ${CMAKE_C_LIBS} attr hiredis)
-
-add_executable(sdfs.cds ${CDS_SRC_LIST})
-target_link_libraries(sdfs.cds ${CMAKE_C_LIBS} attr)
-
-add_executable(sdfs.nfs ${YNFS_SRC_LIST})
-target_link_libraries(sdfs.nfs ${CMAKE_C_LIBS})
+add_executable(sdfs.frctl ${FRCTL_SRC_LIST})
+target_link_libraries(sdfs.frctl ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.nlm ${YNLM_SRC_LIST})
 #target_link_libraries(sdfs.nlm ${CMAKE_C_LIBS})
-
-if(${USE_EPOLL})
-add_executable(sdfs.ftp ${YFTP_SRC_LIST})
-target_link_libraries(sdfs.ftp ${CMAKE_C_LIBS})
-endif(${USE_EPOLL})
-
-#add_executable(sdfs.web ${YWEB_SRC_LIST})
-#target_link_libraries(sdfs.web ${CMAKE_C_LIBS})
-
-LINK_DIRECTORIES("/usr/local/lib")
-add_executable(sdfs.fuse ${YFUSE_SRC_LIST})
-target_link_libraries(sdfs.fuse ${CMAKE_C_LIBS} attr fuse)
-
-#add_executable(sdfs.fuse3 ${YFUSE3_SRC_LIST})
-#target_link_libraries(sdfs.fuse3 ${CMAKE_C_LIBS} attr fuse3)
 
 add_executable(sdfs.configdump ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.configdump.c)
 target_link_libraries(sdfs.configdump ${CMAKE_C_LIBS})
@@ -375,8 +292,8 @@ target_link_libraries(sdfs.configdump ${CMAKE_C_LIBS})
 add_executable(sdfs.write ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.write.c)
 target_link_libraries(sdfs.write ${CMAKE_C_LIBS})
 
-add_executable(sdfs.mv ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mv.c)
-target_link_libraries(sdfs.mv ${CMAKE_C_LIBS})
+#add_executable(sdfs.mv ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mv.c)
+#target_link_libraries(sdfs.mv ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.zk ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.zk.c)
 #target_link_libraries(sdfs.zk ${CMAKE_C_LIBS})
@@ -392,6 +309,9 @@ target_link_libraries(sdfs.attr ${CMAKE_C_LIBS})
 
 add_executable(sdfs.mkdir ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mkdir.c)
 target_link_libraries(sdfs.mkdir ${CMAKE_C_LIBS})
+
+add_executable(sdfs.mkpool ${CMAKE_CURRENT_SOURCE_DIR}/utils/sdfs.mkpool.c)
+target_link_libraries(sdfs.mkpool ${CMAKE_C_LIBS})
 
 add_executable(sdfs.truncate ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.truncate.c)
 target_link_libraries(sdfs.truncate ${CMAKE_C_LIBS})
@@ -409,22 +329,22 @@ target_link_libraries(sdfs.perf ${CMAKE_C_LIBS})
 #target_link_libraries(test_aio ${CMAKE_C_LIBS})
 
 set (MDS_SRC_PERF_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds_main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds_events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds_state_machine.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/disk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/diskpool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/nodepool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/nodepool_hdd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/nodepool_ssd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/election.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_events.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_state_machine.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/disk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/diskpool.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/nodepool.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/nodepool_hdd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/nodepool_ssd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/election.c
     ${CMAKE_CURRENT_SOURCE_DIR}/license/src/license_helper.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds/mds_license.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_license.c
 )
 
 #add_executable(sdfs.perf_mds ${MDS_SRC_PERF_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.perf_mds.c)
-#target_link_libraries(sdfs.perf_mds ${CMAKE_C_LIBS} attr)
+#target_link_libraries(sdfs.perf_mds ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.prof ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.prof.c)
 #target_link_libraries(sdfs.prof ${CMAKE_C_LIBS})
@@ -439,20 +359,20 @@ set (USS_USER_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.user.c
 	${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/md5.c
 )
-add_executable(sdfs.user ${USS_USER_SRC})
-target_link_libraries(sdfs.user ${CMAKE_C_LIBS})
+#add_executable(sdfs.user ${USS_USER_SRC})
+#target_link_libraries(sdfs.user ${CMAKE_C_LIBS})
 
-add_executable(sdfs.group ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.group.c)
-target_link_libraries(sdfs.group ${CMAKE_C_LIBS})
+#add_executable(sdfs.group ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.group.c)
+#target_link_libraries(sdfs.group ${CMAKE_C_LIBS})
 
-add_executable(sdfs.health ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/sdfs.health.c)
-target_link_libraries(sdfs.health ${CMAKE_C_LIBS})
+#add_executable(sdfs.health ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/sdfs.health.c)
+#target_link_libraries(sdfs.health ${CMAKE_C_LIBS})
 
 add_executable(sdfs.mon ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/sdfs.mon.c)
 target_link_libraries(sdfs.mon ${CMAKE_C_LIBS})
 
-add_executable(sdfs.ln ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.ln.c)
-target_link_libraries(sdfs.ln ${CMAKE_C_LIBS})
+#add_executable(sdfs.ln ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.ln.c)
+#target_link_libraries(sdfs.ln ${CMAKE_C_LIBS})
 
 add_executable(sdfs.rmdir ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.rmdir.c)
 target_link_libraries(sdfs.rmdir ${CMAKE_C_LIBS})
@@ -460,8 +380,8 @@ target_link_libraries(sdfs.rmdir ${CMAKE_C_LIBS})
 add_executable(sdfs.rm ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.rm.c)
 target_link_libraries(sdfs.rm ${CMAKE_C_LIBS})
 
-add_executable(sdfs.cp ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.cp.c)
-target_link_libraries(sdfs.cp ${CMAKE_C_LIBS})
+#add_executable(sdfs.cp ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.cp.c)
+#target_link_libraries(sdfs.cp ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.chkstat ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.chkstat.c)
 #target_link_libraries(sdfs.chkstat ${CMAKE_C_LIBS})
@@ -472,8 +392,8 @@ target_link_libraries(sdfs.stat ${CMAKE_C_LIBS})
 add_executable(sdfs.chmod ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.chmod.c)
 target_link_libraries(sdfs.chmod ${CMAKE_C_LIBS})
 
-add_executable(sdfs.clone ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.clone.c)
-target_link_libraries(sdfs.clone ${CMAKE_C_LIBS})
+#add_executable(sdfs.clone ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.clone.c)
+#target_link_libraries(sdfs.clone ${CMAKE_C_LIBS})
 
 add_executable(sdfs.md5sum ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.md5sum.c)
 target_link_libraries(sdfs.md5sum ${CMAKE_C_LIBS})
@@ -496,90 +416,84 @@ target_link_libraries(sdfs.md5sum ${CMAKE_C_LIBS})
 #add_executable(sdfs.fallocate ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.fallocate.c)
 #target_link_libraries(sdfs.fallocate ${CMAKE_C_LIBS})
 
-add_executable(sdfs.du ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.du.c)
-target_link_libraries(sdfs.du ${CMAKE_C_LIBS})
+#add_executable(sdfs.du ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.du.c)
+#target_link_libraries(sdfs.du ${CMAKE_C_LIBS})
 
-add_executable(sdfs.statvfs ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.statvfs.c)
-target_link_libraries(sdfs.statvfs ${CMAKE_C_LIBS})
+#add_executable(sdfs.statvfs ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.statvfs.c)
+#target_link_libraries(sdfs.statvfs ${CMAKE_C_LIBS})
 
-set (USS_WORM_SRC
-        ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.worm.c
-)
-add_executable(sdfs.worm ${USS_WORM_SRC})
-target_link_libraries(sdfs.worm ${CMAKE_C_LIBS})
+#set (USS_WORM_SRC
+#        ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.worm.c
+#)
+
+#add_executable(sdfs.worm ${USS_WORM_SRC})
+#target_link_libraries(sdfs.worm ${CMAKE_C_LIBS})
 
 add_executable(sdfs.chown ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.chown.c)
 target_link_libraries(sdfs.chown ${CMAKE_C_LIBS})
 
-add_executable(sdfs.quota ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.quota.c)
-target_link_libraries(sdfs.quota ${CMAKE_C_LIBS})
+#add_executable(sdfs.quota ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.quota.c)
+#target_link_libraries(sdfs.quota ${CMAKE_C_LIBS})
 
-add_executable(sdfs.share ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.share.c)
-target_link_libraries(sdfs.share ${CMAKE_C_LIBS})
+#add_executable(sdfs.share ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.share.c)
+#target_link_libraries(sdfs.share ${CMAKE_C_LIBS})
 
 set (USS_ADMIN_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.admin.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/option.c
 )
 add_executable(sdfs.admin ${USS_ADMIN_SRC})
-target_link_libraries(sdfs.admin ${CMAKE_C_LIBS} attr hiredis)
+target_link_libraries(sdfs.admin ${CMAKE_C_LIBS} hiredis)
 
 install(TARGETS sdfs LIBRARY DESTINATION app/lib)
 
-install(TARGETS sdfs.mond RUNTIME DESTINATION app/sbin)
-install(TARGETS sdfs.cds RUNTIME DESTINATION app/sbin)
-install(TARGETS sdfs.nfs RUNTIME DESTINATION app/sbin)
-#install(TARGETS sdfs.nlm RUNTIME DESTINATION app/sbin)
-if(${USE_EPOLL})
-#install(TARGETS sdfs.iscsi RUNTIME DESTINATION app/sbin)
-install(TARGETS sdfs.ftp RUNTIME DESTINATION app/sbin)
-endif(${USE_EPOLL})
-#install(TARGETS sdfs.web RUNTIME DESTINATION app/sbin)
-install(TARGETS sdfs.fuse RUNTIME DESTINATION app/sbin)
-#install(TARGETS sdfs.fuse3 RUNTIME DESTINATION app/sbin)
+install(TARGETS sdfs.mdctl RUNTIME DESTINATION app/sbin)
+install(TARGETS sdfs.bactl RUNTIME DESTINATION app/sbin)
+install(TARGETS sdfs.frctl RUNTIME DESTINATION app/sbin)
 
 install(TARGETS sdfs.configdump RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.write RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.mv RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.mv RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.zk RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.cat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.attr RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.objmv RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.mkdir RUNTIME DESTINATION app/bin)
+install(TARGETS sdfs.mkpool RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.truncate RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.touch RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.perf RUNTIME DESTINATION app/bin)
 # install(TARGETS sdfs.perf_mds RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.prof RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.ls RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.health RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.health RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.mon RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.ln RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.ln RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.rmdir RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.rm RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.cp RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.cp RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.chkstat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.chmod RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.clone RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.clone RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.md5sum RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.sysop RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.mdsdrop RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.ffc RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.hsm RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.fallocate RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.du RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.du RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.license RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.mdstat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.stat RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.cdstat RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.statvfs RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.statvfs RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.admin RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.worm RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.chown RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.quota RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.share RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.user RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.group RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.worm RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.chown RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.quota RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.share RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.user RUNTIME DESTINATION app/bin)
+#install(TARGETS sdfs.group RUNTIME DESTINATION app/bin)
 
 #install(TARGETS test_aio RUNTIME DESTINATION app/test)
 
@@ -593,11 +507,7 @@ IF (EXISTS ${CMAKE_INSTALL_PREFIX}/etc)
     MESSAGE("etc exists, ignore")
 ELSE()
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/sdfs.conf DESTINATION etc/)
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/named.conf DESTINATION etc/)
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/exports.conf DESTINATION etc/)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/redis.conf.tpl DESTINATION etc/)
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/ftp.conf DESTINATION etc/)
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/clean_cluster.sh DESTINATION etc/)
 ENDIF()
 #install(TARGETS ../admin/utils.py RUNTIME DESTINATION admin/)
 #install(TARGETS ../admin/instence.py RUNTIME DESTINATION admin/)

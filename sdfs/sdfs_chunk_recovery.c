@@ -16,31 +16,41 @@
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
-#include "yfs_file.h"
 #include "redis.h"
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
 #include "network.h"
 #include "yfs_limit.h"
 #include "cds_rpc.h"
-#include "../cds/replica.h"
-#include "dbg.h"
 #include "worm_cli_lib.h"
 #include "main_loop.h"
 #include "posix_acl.h"
 #include "flock.h"
 #include "xattr.h"
+#include "md_proto.h"
+#include "dbg.h"
+
+#if 1
+int sdfs_chunk_recovery(const chkid_t *chkid)
+{
+        (void) chkid;
+        UNIMPLEMENTED(__DUMP__);
+
+        return 0;
+}
+
+#else
 
 static int _get_chunk_size(uint64_t file_size, uint32_t chunk_idx, int ec)
 {
         uint64_t chksize, size;
         
-        chksize = file_size - chunk_idx * YFS_CHK_SIZE;
-        chksize = chksize > YFS_CHK_SIZE ? YFS_CHK_SIZE : chksize;
+        chksize = file_size - chunk_idx * YFS_CHKINFO_SIZE;
+        chksize = chksize > YFS_CHKINFO_SIZE ? YFS_CHKINFO_SIZE : chksize;
         if (ec)
                 chksize = _align_up(chksize, STRIP_BLOCK);
         
-        YASSERT(chksize <= YFS_CHK_SIZE);
+        YASSERT(chksize <= YFS_CHKINFO_SIZE);
 
         size = chksize;
         return size;
@@ -158,22 +168,22 @@ static int __sdfs_chunk_sync(const fileinfo_t *md, const chkinfo_t *chkinfo)
         int ret, fd = -1, i, chksize;
         int dist_count = 0, src_count = 0;
         nid_t dist[YFS_CHK_REP_MAX], src[YFS_CHK_REP_MAX];
-        const nid_t *nid;
+        const reploc_t *reploc;
 
         for (i = 0; i < (int)chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
+                reploc = &chkinfo->diskid[i];
 
-                if (nid->status & __S_DIRTY) {
-                        dist[dist_count] = *nid;
+                if (reploc->status & __S_DIRTY) {
+                        dist[dist_count] = reploc->id;
                         dist_count++;
                         continue;
                 }
 
-                ret = network_connect(nid, NULL, 1, 1);
+                ret = network_connect(&reploc->id, NULL, 1, 1);
                 if (ret)
                         GOTO(err_ret, ret);
 
-                src[src_count] = *nid;
+                src[src_count] = reploc->id;
                 src_count++;
         }
 
@@ -213,7 +223,7 @@ static int __sdfs_chunk_ec_pull_off(buffer_t *recover, unsigned char *src_in_err
 {
         int ret, i;
         io_t io;
-        const nid_t *nid;
+        const reploc_t *reploc;
 
         DINFO("pull chunk "OBJID_FORMAT" repnum %u, size %u\n",
               OBJID_ARG(&chkinfo->chkid), chkinfo->repnum, size);
@@ -226,8 +236,8 @@ static int __sdfs_chunk_ec_pull_off(buffer_t *recover, unsigned char *src_in_err
 
                 YASSERT(recover[i].len == 0);
 
-                nid = &chkinfo->diskid[i];
-                ret = cds_rpc_read(nid, &io, &recover[i]);
+                reploc = &chkinfo->diskid[i];
+                ret = cds_rpc_read(&reploc->id, &io, &recover[i]);
                 if (ret) {
                         if (ret == ENOENT) {
                                 mbuffer_appendzero(&recover[i], size);
@@ -384,7 +394,7 @@ static int __sdfs_chunk_ec_push(buffer_t *recover, unsigned char *src_in_err,
                         FID_ARG(id), chkinfo->repnum);
 
         for (i = 0; i < (int)chkinfo->repnum; i++) {
-                diskid = &chkinfo->diskid[i];
+                diskid = &chkinfo->diskid[i].id;
                 if (!src_in_err[i])
                         continue;
                 
@@ -435,7 +445,7 @@ static int __sdfs_chunk_sync_ec(const fileinfo_t *md, const chkinfo_t *chkinfo)
         int ret, i;
         unsigned char src_in_err[YFS_CHK_REP_MAX];
         int dist_count = 0, src_count = 0;
-        const nid_t *nid;
+        const reploc_t *reploc;
         ec_t ec;
         uint32_t chksize;
 
@@ -447,16 +457,16 @@ static int __sdfs_chunk_sync_ec(const fileinfo_t *md, const chkinfo_t *chkinfo)
         chksize = _get_chunk_size(md->at_size, chkinfo->chkid.idx, 1);
 
         for (i = 0; i < (int)chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
+                reploc = &chkinfo->diskid[i];
 
-                if (nid->status & __S_DIRTY) {
+                if (reploc->status & __S_DIRTY) {
                         dist_count++;
                         src_in_err[i] = 1;
                 } else {
                         src_count++;
                         src_in_err[i] = 0;
 
-                        ret = network_connect(nid, NULL, 1, 1);
+                        ret = network_connect(&reploc->id, NULL, 1, 1);
                         if (ret)
                                 GOTO(err_ret, ret);
                 }
@@ -489,9 +499,9 @@ int sdfs_chunk_recovery(const chkid_t *chkid)
         fileid_t fileid;
         fileinfo_t md;
         chkinfo_t *chkinfo;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
         time_t begin, now;
-        nid_t *nid;
+        reploc_t *reploc;
 
         DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         
@@ -524,11 +534,11 @@ int sdfs_chunk_recovery(const chkid_t *chkid)
         }
 
         for (i = 0; i < (int)chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
-                nid->status &= (~__S_DIRTY);
+                reploc = &chkinfo->diskid[i];
+                reploc->status &= (~__S_DIRTY);
 
-                //YASSERT(nid->status == 0);
-                DBUG("status %u\n", nid->status);
+                //YASSERT(reploc->status == 0);
+                DBUG("status %u\n", reploc->status);
         }
 
         now = gettime();
@@ -554,13 +564,14 @@ err_ret:
         DWARN("recovery "CHKID_FORMAT" fail\n", CHKID_ARG(chkid));
         return ret;
 }
+#endif
 
 int sdfs_chunk_check(const chkid_t *chkid)
 {
         int ret, i;
         chkinfo_t *chkinfo;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
-        nid_t *nid;
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
+        reploc_t *reploc;
 
         chkinfo = (void *)_chkinfo;
         ret = md_chunk_load(chkid, chkinfo);
@@ -568,14 +579,14 @@ int sdfs_chunk_check(const chkid_t *chkid)
                 GOTO(err_ret, ret);
 
         for (i = 0; i < (int)chkinfo->repnum; i++) {
-                nid = &chkinfo->diskid[i];
+                reploc = &chkinfo->diskid[i];
 
-                if (nid->status & __S_DIRTY) {
+                if (reploc->status & __S_DIRTY) {
                         ret = EAGAIN;
                         GOTO(err_ret, ret);
                 }
 
-                ret = network_connect(nid, NULL, 1, 0);
+                ret = network_connect(&reploc->id, NULL, 1, 0);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         }

@@ -186,8 +186,9 @@ static void __corerpc_msgid_prep(msgid_t *msgid, const buffer_t *wbuf, buffer_t 
 }
 #endif
 
-STATIC int __corerpc_send(void *ctx, msgid_t *msgid, const sockid_t *sockid, const void *request,
-                          int reqlen, const buffer_t *wbuf, buffer_t *rbuf, int msg_type, int msg_size)
+STATIC int __corerpc_send(void *ctx, msgid_t *msgid, const sockid_t *sockid,
+                          const void *request, int reqlen, const buffer_t *wbuf,
+                          buffer_t *rbuf, int msg_type, int msg_size)
 {
         int ret;
         buffer_t buf;
@@ -230,9 +231,9 @@ STATIC int __corerpc_send(void *ctx, msgid_t *msgid, const sockid_t *sockid, con
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        DBUG("send msg to %s, id (%u, %x), len %u\n",
-             _inet_ntoa(sockid->addr), msgid->idx,
-             msgid->figerprint, buf.len);
+        DINFO("send msg to %s, id (%u, %x), len %u\n",
+              _inet_ntoa(sockid->addr), msgid->idx,
+              msgid->figerprint, buf.len);
 
         ret = corenet_tcp_send(ctx, sockid, &buf, 0);
         if (unlikely(ret)) {
@@ -337,7 +338,7 @@ err_ret:
         return ret;
 }
 
-int IO_FUNC corerpc_postwait(const char *name, const nid_t *nid, const void *request,
+int IO_FUNC corerpc_postwait(const char *name, const coreid_t *coreid, const void *request,
                              int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
                              int msg_type, int msg_size, int timeout)
 {
@@ -347,12 +348,15 @@ int IO_FUNC corerpc_postwait(const char *name, const nid_t *nid, const void *req
         //rpc_table_t *__rpc_table_private__ = corerpc_self();
 
         ANALYSIS_BEGIN(0);
-        
-        ret = corenet_maping(ctx, nid, &sockid);
+
+        ret = corenet_maping(ctx, coreid, &sockid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = corerpc_send_and_wait(ctx, name, &sockid, nid, request, reqlen,
+        DINFO("send to %s/%d, sd %u\n", network_rname(&coreid->nid),
+              coreid->idx, sockid.sd);
+
+        ret = corerpc_send_and_wait(ctx, name, &sockid, &coreid->nid, request, reqlen,
                                     wbuf, rbuf, msg_type, msg_size, timeout);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
@@ -402,18 +406,18 @@ static int __corerpc_request_handler(corerpc_ctx_t *ctx, const ynet_net_head_t *
         mbuffer_merge(&rpc_request->buf, buf);
 
         if (unlikely(head->master_magic != ng.master_magic)) {
-                DERROR("got stale msg, master_magic %x:%x\n", head->master_magic, ng.master_magic);
+                DERROR("got stale msg, master_magic %x:%x\n",
+                       head->master_magic, ng.master_magic);
                 handler = __request_stale;
         } else {
                 handler = prog->handler ? prog->handler : __request_nosys;
         }
         
-        schedule_task_new("corenet", handler,
-                          rpc_request, head->priority);
+        schedule_task_new("corenet", handler, rpc_request, head->priority);
 
         if (!gloconf.rdma) {
-                netable_load_update(&ctx->nid, head->load);
-                DBUG("update %s latency %ju\n", network_rname(&ctx->nid), head->load);
+                netable_load_update(&ctx->coreid.nid, head->load);
+                DBUG("update %s latency %ju\n", network_rname(&ctx->coreid.nid), head->load);
         }
 
         return 0;
@@ -736,7 +740,7 @@ void corerpc_reply_error(const sockid_t *sockid, const msgid_t *msgid, int _erro
 #endif
 }
 
-int corerpc_init(const char *name, core_t *core)
+static int __corerpc_init__(const char *name, core_t *core, rpc_table_t **_rpc_table)
 {
         int ret;
         rpc_table_t *__rpc_table_private__;
@@ -747,6 +751,7 @@ int corerpc_init(const char *name, core_t *core)
 
         variable_set(VARIABLE_CORERPC, __rpc_table_private__);
         core->rpc_table = __rpc_table_private__;
+        *_rpc_table = __rpc_table_private__;
 
         return 0;
 err_ret:
@@ -800,4 +805,70 @@ void corerpc_destroy(rpc_table_t **_rpc_table)
         rpc_table_destroy(&__rpc_table_private__);
         *_rpc_table = NULL;
         variable_unset(VARIABLE_CORERPC);
+}
+
+inline static void __corerpc_routine(void *_core, void *var, void *_corerpc)
+{
+        (void) _core;
+        (void) _corerpc;
+
+        corerpc_scan(var);
+
+        return;
+}
+
+inline static void __corerpc_destroy(void *_core, void *var, void *_corerpc)
+{
+        core_t *core = _core;
+
+        (void) _corerpc;
+        (void) var;
+
+        corerpc_destroy((void *)&core->rpc_table);
+
+        return;
+}
+
+static int __corerpc_init(va_list ap)
+{
+        int ret;
+        core_t *core = core_self();
+        char name[MAX_NAME_LEN];
+        rpc_table_t *rpc_table;
+
+        va_end(ap);
+
+        snprintf(name, sizeof(name), "%s[%u]", core->name, core->idx);
+        ret = __corerpc_init__(name, core, &rpc_table);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = core_register_routine("corerpc", __corerpc_routine, rpc_table);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+
+        ret = core_register_destroy("corerpc", __corerpc_destroy, rpc_table);
+        if (unlikely(ret))
+                GOTO(err_destroy, ret);
+        
+        DINFO("%s[%u] rpc inited\n", core->name, core->hash);
+
+        return 0;
+err_destroy:
+        UNIMPLEMENTED(__DUMP__);
+err_ret:
+        return ret;
+}
+
+int corerpc_init()
+{
+        int ret;
+                
+        ret = core_init_modules("corerpc", __corerpc_init, NULL);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        return 0;
+err_ret:
+        return ret;
 }

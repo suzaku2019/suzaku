@@ -9,6 +9,7 @@
 #include "ylib.h"
 #include "schedule.h"
 #include "sdfs_lib.h"
+#include "partition.h"
 
 int main(int argc, char *argv[])
 {
@@ -55,13 +56,25 @@ int main(int argc, char *argv[])
                 exit(1);
 
         dbg_info(0);
-        
+
+#if 0
         ret = ly_init_simple("ywrite");
         if (ret) {
                 fprintf(stderr, "ly_init() %s\n", strerror(ret));
                 exit(1);
         }
+#else
+        ret = sdfs_init("write", 1);
+        if (ret) {
+                fprintf(stderr, "sdfs_init() %s\n", strerror(ret));
+                exit(1);
+        }
+#endif
 
+        ret = part_init(PART_MDS | PART_FRCTL);
+        if (ret)
+                GOTO(err_ret, ret);
+        
         DINFO("write %s to %s, len: %d\n", from, to, (int)strlen(from)+1);
         
         retry = 0;

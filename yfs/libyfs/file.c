@@ -12,7 +12,6 @@
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
-#include "yfs_file.h"
 #include "sdfs_lib.h"
 #include "yfs_limit.h"
 #include "dbg.h"
@@ -241,6 +240,7 @@ err_ret:
         return ret;
 }
 
+#if 0
 int ly_symlink(const char *link_target, const char *link_name)
 {
         int ret;
@@ -262,6 +262,7 @@ int ly_symlink(const char *link_target, const char *link_name)
 err_ret:
         return ret;
 }
+#endif
 
 int ly_link(const char *target, const char *link)
 {

@@ -211,9 +211,8 @@ void  __attribute__((noinline)) dbg_ylog_write(const int logtype, const int size
                 if (unlikely(!(exp) && __shutdown__ == 0)) {                      \
                         __shutdown__ = 1;                               \
                         DERROR("!!!!!!!!!!assert fail!!!!!!!!!!!!!!!\n"); \
-                        SERROR(200, "%s !!!!!!!!!!assert fail!!!!!!!!!!!!!!!\n", M_FUSIONSTOR_ASSERT_WARN); \
-                        if (srv_running && gloconf.coredump) {                              \
-                            abort(); \
+                        if (srv_running && gloconf.coredump) {          \
+                                abort();                                \
                         } else {                                        \
                                 if (gloconf.restart) {                  \
                                         EXIT(EAGAIN);                   \

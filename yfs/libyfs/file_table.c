@@ -6,7 +6,6 @@
 #define DBG_SUBSYS S_YFSLIB
 
 #include "yfscli_conf.h"
-#include "yfs_file.h"
 #include "ylib.h"
 #include "dbg.h"
 

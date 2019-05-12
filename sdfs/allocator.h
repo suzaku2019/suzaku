@@ -9,6 +9,10 @@
 #define ENABLE_ALLOCATE_BALANCE 1
 
 int allocator_init();
-int allocator_new(int repnum, int hardend, int tier, nid_t *disks);
+int allocator_new(uint64_t poolid, int repnum, nid_t *disks);
+int allocator_dump();
+int allocator_disk_register(uint64_t poolid, const nid_t *nid, diskid_t *diskid,
+                            const char *faultdomain);
+int allocator_disk_unregister(uint64_t poolid, const nid_t *nid, const diskid_t *diskid);
 
 #endif

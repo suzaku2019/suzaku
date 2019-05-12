@@ -13,7 +13,7 @@
 #include "net_global.h"
 #include "sdfs_conf.h"
 #include "ylib.h"
-#include "hash_table.h"
+#include "htab.h"
 #include "sysutil.h"
 #include "fnotify.h"
 #include "dbg.h"
@@ -28,7 +28,7 @@ typedef struct fnotify_node {
 
 typedef struct {
         sy_spinlock_t lock;
-        hashtable_t table;
+        htab_t table;
         int inotify_fd;
 } fnotify_t;
 
@@ -124,7 +124,7 @@ static void *__fnotify_thr_fn(void *arg)
                         if (unlikely(ret))
                                 GOTO(err_ret, ret);
 
-                        ent = hash_table_find(fnotify.table, (void *)&event->wd);
+                        ent = htab_find(fnotify.table, (void *)&event->wd);
                         if (ent == NULL) {
                                 if ((event->mask & IN_IGNORED) || (event->mask & IN_DELETE_SELF)) {
                                         sy_spin_unlock(&fnotify.lock);
@@ -145,7 +145,7 @@ static void *__fnotify_thr_fn(void *arg)
                                         if (unlikely(ret))
                                                 GOTO(err_ret, ret);
 
-                                        ret = hash_table_remove(fnotify.table, &event->wd, (void **)&ent);
+                                        ret = htab_remove(fnotify.table, &event->wd, (void **)&ent);
                                         if (unlikely(ret))
                                                 UNIMPLEMENTED(__DUMP__);
 
@@ -219,7 +219,7 @@ int fnotify_init()
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        fnotify.table = hash_create_table(__cmp, __key, "fnotify");
+        fnotify.table = htab_create(__cmp, __key, "fnotify");
         if (fnotify.table == NULL) {
                 ret = ENOMEM;
                 GOTO(err_ret, ret);
@@ -273,7 +273,7 @@ int fnotify_register(const char *path, fnotify_callback mod_callback,
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = hash_table_insert(fnotify.table, (void *)ent, &ent->fd, 0);
+        ret = htab_insert(fnotify.table, (void *)ent, &ent->fd, 0);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
@@ -407,9 +407,9 @@ int fnotify_unregister(const char *path)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ent = hash_table_find(fnotify.table, (void *) &wd);
+        ent = htab_find(fnotify.table, (void *) &wd);
         if (ent) {
-                ret = hash_table_remove(fnotify.table, &ent->fd, (void **) &ent);
+                ret = htab_remove(fnotify.table, &ent->fd, (void **) &ent);
                 if (unlikely(ret)) {
                     DERROR("ret (%u) %s\n", ret, strerror(ret));
                     GOTO(err_lock, ret);
@@ -463,7 +463,7 @@ int quorum_fnotify_register(const char *path, fnotify_callback mod_callback,
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = hash_table_insert(fnotify.table, (void *) ent, &ent->fd, 0);
+        ret = htab_insert(fnotify.table, (void *) ent, &ent->fd, 0);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
@@ -493,14 +493,14 @@ int quorum_fnotify_unregister(int wd)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ent = hash_table_find(fnotify.table, (void *) &wd);
+        ent = htab_find(fnotify.table, (void *) &wd);
         if (ent == NULL) {
                 ret = errno;
                 DERROR("ret (%u) %s\n", ret, strerror(ret));
                 GOTO(err_lock, ret);
         }
 
-        ret = hash_table_remove(fnotify.table, &ent->fd, (void **) &ent);
+        ret = htab_remove(fnotify.table, &ent->fd, (void **) &ent);
         if (unlikely(ret)) {
             DERROR("ret (%u) %s\n", ret, strerror(ret));
             GOTO(err_lock, ret);

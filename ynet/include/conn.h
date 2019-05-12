@@ -1,6 +1,8 @@
 #ifndef __CONN_H__
 #define __CONN_H__
 
+#include "ynet_net.h"
+
 int conn_init();
 int conn_retry(const nid_t *_nid);
 int conn_register();

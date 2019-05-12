@@ -98,7 +98,8 @@ int md_list_user(user_t **_user, int *count)
         int ret, i;
         redisReply *reply, *e1, *v1;
         user_t *user;
-        
+
+        UNIMPLEMENTED(__DUMP__);
         reply = kvop->scan(roottype_user, NULL, 0);
         if (reply == NULL || reply->type != REDIS_REPLY_ARRAY) {
                 ret = ENOENT;

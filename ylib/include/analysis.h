@@ -1,7 +1,7 @@
 #ifndef __ANALYSIS_H__
 #define __ANALYSIS_H__
 
-#include "hash_table.h"
+#include "htab.h"
 #include "job.h"
 #include "ylock.h"
 
@@ -19,7 +19,7 @@ typedef struct {
         struct list_head hook;
         char name[MAX_NAME_LEN];
         int private;
-        hashtable_t tab;
+        htab_t tab;
         analysis_queue_t *queue;
         analysis_queue_t *new_queue;
         sy_spinlock_t queue_lock;

@@ -8,10 +8,10 @@
 
 #include "chk_proto.h"
 #include "net_global.h"
-#include "yfs_chunk.h"
 #include "md_root.h"
 #include "md.h"
-#include "yfs_file.h"
+#include "user.h"
+#include "group.h"
 #include "sdfs_lib.h"
 
 /* dir.c */
@@ -23,7 +23,8 @@ extern int md_readdirplus_with_filter(const volid_t *volid, const fileid_t *file
                                       void **de, int *delen, const filter_t *filter);
 
 /* node.c */
-int md_mkdir(const volid_t *volid, const fileid_t *parent, const char *name, const setattr_t *setattr, fileid_t *fileid);
+int md_mkdir(const volid_t *volid, const fileid_t *parent, const char *name,
+             const setattr_t *setattr, fileid_t *fileid);
 int md_utime(const volid_t *volid, const fileid_t *fileid, const struct timespec *atime,
              const struct timespec *mtime, const struct timespec *ctime);
 int md_chmod(const volid_t *volid, const fileid_t *fileid, mode_t mode);
@@ -62,7 +63,7 @@ int md_remove_shareinfo(share_protocol_t prot,
 /* chunk.c */
 int md_chunk_update(const chkinfo_t *chkinfo);//need lock
 int md_chunk_newdisk(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin, int flag);//need lock
-int md_chunk_create(const fileinfo_t *md, uint64_t idx, chkinfo_t *chkinfo);
+int md_chunk_create(const fileinfo_t *md, const chkid_t *chkid, chkinfo_t *chkinfo);
 int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo);
 int md_chunk_load_check(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin);
 
@@ -81,11 +82,14 @@ int md_readlink(const volid_t *volid, const fileid_t *fileid, char *_buf);
 int md_lookup(const volid_t *volid, fileid_t *fileid, const fileid_t *parent, const char *name);
 int md_getattr(const volid_t *volid, const fileid_t *fileid, md_proto_t *md);
 int md_mkvol(const char *name, const setattr_t *setattr, fileid_t *_fileid);
+int md_mkpool(const char *name, const setattr_t *setattr, fileid_t *_fileid);
 int md_rmvol(const char *name);
 int md_dirlist(const volid_t *volid, const dirid_t *dirid, uint32_t count, uint64_t offset, dirlist_t **dirlist);
-int md_lookupvol(const char *name, fileid_t *fileid);
+int md_getpool(const char *name, fileid_t *fileid);
 int md_initroot();
 int md_system_volid(uint64_t *id);
+
+#if 0
 int md_getlock(const volid_t *volid, const fileid_t *fileid, sdfs_lock_t *lock);
 int md_setlock(const volid_t *volid, const fileid_t *fileid, const sdfs_lock_t *lock);
 
@@ -116,12 +120,5 @@ int md_share_list_byprotocal(share_protocol_t protocol, shareinfo_t **_shareinfo
 int md_share_get_byname(const char *name, share_user_type_t type, shareinfo_t *shareinfo);
 int md_share_get(const char *key, shareinfo_t *shareinfo);
 int md_share_set(const char *key, const shareinfo_t *shareinfo);
-/*redis.c*/
-//extern int kunlock(const fileid_t *fileid);
-//extern int klock(const fileid_t *fileid, int ttl);
-
-/* file lock operation */
-extern int md_flock_op(const fileid_t *fileid,
-                       uss_flock_op_t flock_op,
-                       uss_flock_t *flock);
+#endif
 #endif

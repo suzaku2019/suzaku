@@ -1,0 +1,255 @@
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
+#include <sys/resource.h>
+#include <unistd.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <string.h>
+#include <semaphore.h>
+#include <poll.h> 
+#include <pthread.h>
+#include <errno.h>
+
+#define DBG_SUBSYS S_YFSLIB
+
+#include "ynet_rpc.h"
+#include "job_dock.h"
+#include "net_global.h"
+#include "ynet_rpc.h"
+#include "rpc_proto.h"
+#include "range.h"
+#include "md_lib.h"
+#include "network.h"
+#include "mem_cache.h"
+#include "schedule.h"
+#include "corenet_connect.h"
+#include "corerpc.h"
+#include "dbg.h"
+
+extern net_global_t ng;
+
+typedef enum {
+        RANGE_NULL = 500,
+        RANGE_GET_TOKEN,
+        RANGE_MAX,
+} range_op_t;
+
+typedef struct {
+        uint32_t op;
+        uint32_t buflen;
+        chkid_t  chkid;
+        char buf[0];
+} msg_t;
+
+static __request_handler_func__  __request_handler__[RANGE_MAX - RANGE_NULL];
+static char  __request_name__[RANGE_MAX - RANGE_NULL][__RPC_HANDLER_NAME__ ];
+
+static void __request_set_handler(int op, __request_handler_func__ func, const char *name)
+{
+        YASSERT(strlen(name) + 1 < __RPC_HANDLER_NAME__ );
+        strcpy(__request_name__[op - RANGE_NULL], name);
+        __request_handler__[op - RANGE_NULL] = func;
+}
+
+static void __request_get_handler(int op, __request_handler_func__ *func, const char **name)
+{
+        *func = __request_handler__[op - RANGE_NULL];
+        *name = __request_name__[op - RANGE_NULL];
+}
+
+static void __getmsg(buffer_t *buf, msg_t **_req, int *buflen, char *_buf)
+{
+        msg_t *req;
+
+        YASSERT(buf->len <= MEM_CACHE_SIZE4K);
+
+        req = (void *)_buf;
+        *buflen = buf->len - sizeof(*req);
+        mbuffer_get(buf, req, buf->len);
+
+        *_req = req;
+}
+
+static void __request_handler(void *arg)
+{
+        int ret;
+        msg_t req;
+        sockid_t sockid;
+        msgid_t msgid;
+        buffer_t buf;
+        __request_handler_func__ handler;
+        const char *name;
+
+        request_trans(arg, NULL, &sockid, &msgid, &buf, NULL);
+
+        if (buf.len < sizeof(req)) {
+                ret = EINVAL;
+                GOTO(err_ret, ret);
+        }
+
+        mbuffer_get(&buf, &req, sizeof(req));
+
+        DBUG("new op %u from %s, id (%u, %x)\n", req.op,
+             _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
+
+#if 0
+        if (!netable_connected(net_getadmin())) {
+                ret = ENONET;
+                GOTO(err_ret, ret);
+        }
+#endif
+
+        __request_get_handler(req.op, &handler, &name);
+        if (handler == NULL) {
+                ret = ENOSYS;
+                DWARN("error op %u\n", req.op);
+                GOTO(err_ret, ret);
+        }
+
+        schedule_task_setname(name);
+
+        ret = handler(&sockid, &msgid, &buf);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        mbuffer_free(&buf);
+
+        DBUG("reply op %u from %s, id (%u, %x)\n", req.op,
+              _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
+
+        return ;
+err_ret:
+        mbuffer_free(&buf);
+        if (sockid.type == SOCKID_CORENET) {
+                DBUG("corenet\n");
+                corerpc_reply_error(&sockid, &msgid, ret);
+        } else {
+                rpc_reply_error(&sockid, &msgid, ret);
+        }
+
+        DBUG("error op %u from %s, id (%u, %x)\n", req.op,
+             _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
+        return;
+}
+
+static int __range_srv_get_token(const sockid_t *sockid, const msgid_t *msgid,
+                                 buffer_t *_buf)
+{
+        int ret, buflen;
+        msg_t *req;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        const uint32_t *op;
+        const nid_t *nid;
+        const coreid_t *coreid;
+        io_token_t *token;
+        char _token[IO_TOKEN_MAX];
+
+        __getmsg(_buf, &req, &buflen, buf);
+
+        _opaque_decode(req->buf, buflen,
+                       &nid, NULL,
+                       &coreid, NULL,
+                       &op, NULL,
+                       NULL);
+
+        token = (void *)_token;
+        if (likely(sockid->type == SOCKID_CORENET)) {
+                ret = range_ctl_get_token(&req->chkid, *op, token);
+                if (unlikely(ret)) {
+                        GOTO(err_ret, ret);
+                }
+
+                DBUG("corenet write\n");
+                corerpc_reply(sockid, msgid, token, IO_TOKEN_SIZE(token->repnum));
+        } else {
+                ret = range_ctl_get_token1(coreid, &req->chkid, *op, token);
+                if (unlikely(ret)) {
+                        GOTO(err_ret, ret);
+                }
+
+                rpc_reply(sockid, msgid, token, IO_TOKEN_SIZE(token->repnum));
+        }
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+int range_rpc_get_token(const coreid_t *coreid, const chkid_t *chkid, uint32_t op,
+                        io_token_t *token)
+{
+        int ret;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t count;
+        msg_t *req;
+
+        ret = network_connect(&coreid->nid, NULL, 1, 0);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ANALYSIS_BEGIN(0);
+
+        req = (void *)buf;
+        req->op = RANGE_GET_TOKEN;
+        req->chkid = *chkid;
+        _opaque_encode(&req->buf, &count,
+                       net_getnid(), sizeof(nid_t),
+                       coreid, sizeof(*coreid),
+                       &op, sizeof(op),
+                       NULL);
+
+        req->buflen = count;
+
+        DBUG("connect %u\n", sizeof(*req) + count);
+
+        if (likely(ng.daemon)) {
+                buffer_t _buf;
+                mbuffer_init(&_buf, 0);
+
+                ret = corerpc_postwait("range_rpc_get_token", coreid,
+                                       req, sizeof(*req) + count, NULL,
+                                       &_buf, MSG_RANGE_CORE, 0, _get_timeout());
+                if (unlikely(ret)) {
+                        GOTO(err_ret, ret);
+                }
+
+                mbuffer_popmsg(&_buf, token, _buf.len);
+        } else {
+                ret = rpc_request_wait("range_rpc_get_token", &coreid->nid,
+                                       req, sizeof(*req) + count,
+                                       token, NULL,
+                                       MSG_RANGE, 0, _get_timeout());
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+                
+        }
+
+        //YASSERT(_buf.len == sizeof(*token));
+
+        ANALYSIS_QUEUE(0, IO_WARN, NULL);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+
+int range_rpc_init()
+{
+        DINFO("range rpc init\n");
+
+        __request_set_handler(RANGE_GET_TOKEN, __range_srv_get_token,
+                              "range_ctl_get_token");
+        
+        rpc_request_register(MSG_RANGE, __request_handler, NULL);
+        corerpc_register(MSG_RANGE_CORE, __request_handler, NULL);
+
+        return 0;
+}

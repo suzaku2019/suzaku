@@ -17,6 +17,12 @@ typedef enum {
         VARIABLE_REDIS,
         VARIABLE_ANALYSIS,
         VARIABLE_ATTR_QUEUE,
+        VARIABLE_PART_MDS,
+        VARIABLE_PART_FRCTL,
+        VARIABLE_PA_SRV,
+        VARIABLE_RANGE_SRV,
+        VARIABLE_RINGLOCK,
+        VARIABLE_DISK,
         VARIABLE_MAX,
 } variable_type_t;
 

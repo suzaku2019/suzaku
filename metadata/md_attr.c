@@ -110,8 +110,8 @@ void md_attr_inherit(md_proto_t *md, const md_proto_t *parent, const ec_t *ec, u
         uint32_t repnum;
         
         if (parent) {
-                DBUG("parent "FID_FORMAT" repnum %u status %u split %u\n", FID_ARG(&parent->fileid),
-                     parent->repnum, parent->status, parent->split);
+                DBUG("parent "FID_FORMAT" repnum %u split %u\n", FID_ARG(&parent->fileid),
+                     parent->repnum, parent->split);
                 YASSERT(parent->repnum);
         }
 
@@ -134,10 +134,10 @@ void md_attr_inherit(md_proto_t *md, const md_proto_t *parent, const ec_t *ec, u
 
         if (parent) {
                 YASSERT(parent->repnum);
-                md->status = parent->status;
+                //md->status = parent->status;
                 repnum = parent->repnum;
         } else {
-                md->status = 0;
+                //md->status = 0;
                 repnum = gloconf.chunk_rep;
         }
 
@@ -150,12 +150,9 @@ void md_attr_inherit(md_proto_t *md, const md_proto_t *parent, const ec_t *ec, u
                 md->repnum = repnum;
 
         if (parent && parent->split) {
-                if (md->plugin == PLUGIN_EC_ISA && S_ISREG(mode)) {
-                        md->split = md->k * YFS_CHK_LEN_DEF;
-                } else
-                        md->split = parent->split;
+                md->split = parent->split;
         } else
-                md->split = YFS_CHK_LEN_DEF;
+                md->split = SDFS_CHUNK_SPLIT;
 
         if (parent) {
                 md->parent = parent->fileid;
@@ -163,7 +160,7 @@ void md_attr_inherit(md_proto_t *md, const md_proto_t *parent, const ec_t *ec, u
                       CHKID_ARG(&md->fileid), CHKID_ARG(&md->parent));
         } else {
                 md->parent.id = 0;
-                md->parent.volid = 0;
+                md->parent.poolid = 0;
         }
 
         if(parent)
@@ -271,13 +268,6 @@ int md_attr_init(md_proto_t *md, const setattr_t *setattr, uint32_t type,
 
         memset(md, 0x0, sizeof(*md));
         mode = stype(type);
-#if 0
-        if (type == ftype_dir || type == ftype_vol || type == ftype_xattr) {
-                mode = __S_IFDIR;
-        } else {
-                mode = __S_IFREG;
-        }
-#endif
         
         if (S_ISREG(mode)) {
                 YASSERT(parent);
@@ -330,6 +320,7 @@ int md_attr_getid(fileid_t *fileid, const fileid_t *parent, ftype_t type, const 
         uint64_t id;
 
         (void) parent;
+        YASSERT(volid);
         
         ANALYSIS_BEGIN(0);
         
@@ -337,31 +328,13 @@ int md_attr_getid(fileid_t *fileid, const fileid_t *parent, ftype_t type, const 
         if (ret)
                 GOTO(err_ret, ret);
 
-        if (volid) {
-                fileid->volid = volid->volid;
-                fileid->idx = 0;
-                fileid->id = id;
-
-                ret = redis_new_sharding(volid, &fileid->sharding);
-                if (ret)
-                        GOTO(err_ret, ret);
-        } else {
-                uint64_t systemvol;
-                ret = md_system_volid(&systemvol);
-                        
-                fileid->volid = systemvol;
-                fileid->idx = 0;
-                fileid->id = id;
-                volid_t _volid = {systemvol, 0};
-                ret = redis_new_sharding(&_volid, &fileid->sharding);
-                if (ret)
-                        GOTO(err_ret, ret);
-        }
-
+        fileid->poolid = volid->volid;
+        fileid->idx = 0;
+        fileid->id = id;
         fileid->type = type;
         fileid->__pad__ = 0;
 
-        DBUG("create "CHKID_FORMAT" @ sharding[%u]\n", CHKID_ARG(fileid), fileid->sharding);
+        DBUG("create "CHKID_FORMAT"\n", CHKID_ARG(fileid));
 
         ANALYSIS_QUEUE(0, IO_WARN, NULL);
 

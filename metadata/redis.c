@@ -110,7 +110,7 @@ int hget(const volid_t *volid, const fileid_t *fileid, const char *name,
         int ret;
 
         YASSERT(fileid->type);
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -199,12 +199,12 @@ int hset(const volid_t *volid, const fileid_t *fileid, const char *name,
         
         ANALYSIS_BEGIN(0);
 
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
 
-        YASSERT(volid->volid);
+        YASSERT(volid->poolid);
         if (__use_co__) { 
                 ret = co_hset(volid, fileid, name, value, size, flag);
         } else if (__use_pipeline__) {
@@ -268,7 +268,7 @@ int hlen(const volid_t *volid, const fileid_t *fileid, uint64_t *count)
         int ret;
 
         ANALYSIS_BEGIN(0);
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -341,7 +341,7 @@ redisReply *hscan(const volid_t *volid, const fileid_t *fileid, const char *matc
                   uint64_t cursor, uint64_t count)
 {
         redisReply *reply;
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -399,7 +399,7 @@ static int __hdel(va_list ap)
 
 int hdel(const volid_t *volid, const fileid_t *fileid, const char *name)
 {
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -463,7 +463,7 @@ int kget(const volid_t *volid, const fileid_t *fileid, void *value, size_t *size
 {
         int ret;
 
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -531,7 +531,7 @@ int kset(const volid_t *volid, const fileid_t *fileid, const void *value, size_t
 {
         int ret;
         
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -593,7 +593,7 @@ static int __kdel(va_list ap)
 
 int kdel(const volid_t *volid, const fileid_t *fileid)
 {
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -678,7 +678,7 @@ inline static int __klock(va_list ap)
 
 int klock(const volid_t *volid, const fileid_t *fileid, int ttl, int block)
 {
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -753,7 +753,7 @@ inline static int __kunlock(va_list ap)
 
 int kunlock(const volid_t *volid, const fileid_t *fileid)
 {
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }
@@ -829,7 +829,7 @@ static int __hiter(va_list ap)
 int hiter(const volid_t *volid, const fileid_t *fileid, const char *match,
           func2_t func, void *ctx)
 {
-        volid_t _volid = {fileid->volid, 0};
+        volid_t _volid = {fileid->poolid, 0};
         if (unlikely(volid == NULL)) {
                 volid = &_volid;
         }

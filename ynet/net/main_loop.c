@@ -71,7 +71,7 @@ static int __main_loop_worker_init(worker_t *worker)
         event_t ev;
         char name[MAX_NAME_LEN];
 
-        snprintf(name, sizeof(name), "default");
+        snprintf(name, sizeof(name), "main_loop");
         ret = schedule_create(&interrupt_eventfd, name, &worker->idx, &worker->schedule, NULL);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -85,14 +85,6 @@ static int __main_loop_worker_init(worker_t *worker)
                 ret = errno;
                 GOTO(err_ret, ret);
         }
-
-#if 0
-        if (ng.daemon) {
-                ret = aio_create(name, -1);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-        }
-#endif
 
         worker->tid = _gettid();
 

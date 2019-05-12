@@ -7,12 +7,14 @@ import errno
 import re
 import time
 import random
+import socket
+import uuid
 
 from buddha.smart import SMART
 
 from lvm import LVM
 from utils import Exp, dmsg, dwarn, derror, _exec_pipe, \
-    _human_unreadable, _human_readable, _exec_pipe1, lock_file
+    _human_unreadable, _human_readable, _exec_pipe1, lock_file, exec_shell, _check_config
 
 FILE_BLOCK_LEN = 4096
 
@@ -955,3 +957,153 @@ class Disk:
         part_info['mount'] = part_mount
 
         return part_info
+
+import sys
+import argparse
+from argparse import RawTextHelpFormatter
+
+from config import Config
+
+MAX_DISK = 256
+
+class DiskOp:
+    def __init__(self):
+        self.config = Config()
+        self.workdir = "%s/bactl" % (self.config.workdir)
+        os.system("mkdir -p %s/config" % (self.workdir))
+        os.system("mkdir -p %s/filesystem" % (self.workdir))
+        os.system("mkdir -p %s/redis" % (self.workdir))
+
+    def newidx(self):
+        for i in range(MAX_DISK):
+            if not os.path.exists("%s/config/%d.config" % (self.workdir, i)):
+                return i
+
+        return -1
+
+    def poolid(self, pool):
+        cmd = "sdfs stat /%s | grep fileid | awk -F '-' '{print $2}'" % (pool)
+        while (1):
+            try:
+                (out, err) = exec_shell(cmd, need_return=True)
+                break
+            except Exp, e:
+                ret = e.errno
+                if (ret in [errno.EAGAIN, errno.EBUSY, errno.ENONET]):
+                    time.sleep(1)
+                    dwarn("get poolid fail, %s, retry" % (e))
+                    continue
+                else:
+                    if (retry > retry_max):
+                        raise Exp(ret, "get pool id fail: ret: %d, %s" % (ret, e))
+                    else:
+                        time.sleep(1)
+                        retry = retry + 1
+
+
+        if (out[-1] == '\n'):
+            out = out[:-1]
+
+        return long(out)
+
+    def stat(self, device):
+        s = os.stat(device)
+        
+        if (stat.S_ISBLK(s.st_mode)):
+            cmd = "lsblk %s | sed -n '2p' | awk '{print $4}'" % (device)
+            (out, err) = exec_shell(cmd, need_return=True)
+            size = _human_unreadable(out)
+            return (size, s.st_mode)
+        elif (stat.S_ISREG(s.st_mode)):
+            return (s.st_size, s.st_mode)
+        else:
+            raise Exp(errno.EINVAL, os.strerror(errno.EINVAL))
+        
+    
+    def add_filesystem(self, poolid, device, idx):
+        if (device == "fake"):
+            _uuid = str(uuid.uuid1())
+            os.system("mkdir -p %s/filesystem/%s" % (self.workdir, _uuid))
+        else:
+            cmd = "blkid %s | awk '{print $2}' | sed 's/UUID=//g' | sed 's/\"//g'" % (device)
+            (_uuid, err) = exec_shell(cmd, need_return=True)
+            os.system("mkdir -p %s/filesystem/%s" % (self.workdir, _uuid))
+            os.system("mount %s %s/filesystem/%s" % (device, self.workdir, _uuid))
+            
+        config = "pool=%d;faultdomain=null;uuid=%s" % (poolid, _uuid)
+        config1 = "driver=filesystem"
+        os.system("echo '%s' > %s/config/%s.config" % (config + ";" + config1, self.workdir, idx))
+
+    def add_raw_redis(self, idx, _uuid):
+        workdir = os.path.join(self.workdir, "redis", _uuid)
+        cmd = "mkdir -p " + workdir
+        os.system(cmd)
+
+        src = os.path.join(self.config.home, "etc/redis.conf.tpl")
+        dist = os.path.join(workdir, "redis.conf")
+        cmd = "cp " + src + " " + dist
+        os.system(cmd)
+
+        port = 16384 + idx
+        _check_config(dist, "port", " ", port, True)
+        _check_config(dist, "dir", " ", workdir, True)
+        _check_config(dist, "pidfile", " ", workdir + "/redis-server.pid", True)
+        _check_config(dist, "logfile", " ", workdir + "/redis.log", True)
+        _check_config(dist, "bind", " ", socket.gethostname(), True)
+        _check_config(dist, "unixsocket", " ", workdir + "/redis.socket", True)
+        _check_config(dist, "unixsocketperm", " ", "770", True)
+
+    def add_raw_aio(self, poolid, device, idx, page_size):
+        _uuid = str(uuid.uuid1())
+        print self.stat(device)
+        disk_size = self.stat(device)[0]
+        config = "pool=%d;faultdomain=null;uuid=%s" % (poolid, _uuid)
+        config1 = "driver=raw_aio;disk_size=%d;page_size=%d;device=%s" % (disk_size, page_size, device)
+        os.system("mkdir -p %s" % (self.workdir))
+        os.system("echo '%s' > %s/config/%s.config" % (config + ";" + config1, self.workdir, idx))
+
+        self.add_raw_redis(idx, _uuid)
+        self.start_redis()
+        
+    def add(self, pool, driver, device, page_size):
+        newidx = self.newidx()
+        if (newidx == -1):
+            raise Exp(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+        poolid = self.poolid(pool)
+        
+        print (poolid, driver, device, newidx)
+        
+        if (driver == "filesystem"):
+            self.add_filesystem(poolid, device, newidx)
+        elif (driver == "raw_aio"):
+            self.add_raw_aio(poolid, device, newidx, page_size)
+        else:
+            raise Exp(errno.ENOSYS, os.strerror(errno.ENOSYS))
+            
+    def start_redis(self):
+        ls = os.listdir(self.workdir + "/redis")
+        for i in ls:
+            cmd = "redis-server %s/redis/%s/redis.conf" % (self.workdir, i)
+            os.system(cmd)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter)
+    subparsers = parser.add_subparsers()
+
+    def _add(args):
+        diskop = DiskOp()
+        diskop.add(args.pool, args.driver, args.device, args.page_size)
+    parser_add = subparsers.add_parser('add', help='add disk')
+    parser_add.add_argument("--pool", required=True, help="pool name")
+    parser_add.add_argument("--driver", required=True, help="driver", choices=["filesystem", "raw_aio", "raw_spdk"])
+    parser_add.add_argument("--device", required=True, help="device")
+    parser_add.add_argument("--page_size", default=1024 * 1024 * 4, type=int, help="page size")
+    parser_add.set_defaults(func=_add)
+    
+    if (len(sys.argv) == 1):
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+    args.func(args)

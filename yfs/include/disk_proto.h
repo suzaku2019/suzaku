@@ -27,20 +27,6 @@ typedef enum {
   ((((t)->ds_bsize * (t)->ds_bavail) > (mdsconf.disk_keep)) \
    && ((t)->ds_ffree > YFS_CHK_AVAIL_MIN)) ? 1 : 0)
 
-#if 1
-
-typedef nid_t diskid_t;
-
-#else
-
-typedef struct {
-        uint64_t id;
-        uint32_t version;
-        uint32_t dirty;
-} diskid_t;
-
-#endif
-
 typedef struct {
         diskid_t    diskid;
         uint32_t    sockaddr;

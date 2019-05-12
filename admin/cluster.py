@@ -76,14 +76,16 @@ class Cluster(object):
 
         def _put_remote_warp(k):
             # backup and update
+            """
             try:
                 dmsg('backup %s to %s' % (dist, backup))
                 exec_remote(k, cmd_backup)
             except Exp, e:
                 derror("%s : %s" % (k, e))
+            """
 
             try:
-                dmsg('update %s to %s' % (src, k))
+                #dmsg('update %s to %s' % (src, k))
                 put_remote(k, src_tar, tmp_update)
                 exec_remote(k, cmd_update)
             except Exp, e:
@@ -91,90 +93,6 @@ class Cluster(object):
 
         args = [[k] for (k) in hosts]
         mutil_exec(_put_remote_warp, args)
-
-    def _update_nfs(self, nfs_tar, force, hosts=None):
-        nfs_temp = "/tmp/nfs"
-        nfs_etc = "/etc/ganesha"
-        ntirpc_inc = "/usr/include/ntirpc"
-        common_lib = "/usr/lib64"
-        fsal_lib = "/usr/lib64/ganesha"
-
-        if os.path.exists(nfs_tar) == False:
-            dwarn("nfs package is not found")
-            sys.exit(-2)
-
-        nfs_pack = os.path.basename(nfs_tar)
-
-        for host in hosts:
-            # 首先创建临时目录
-            _exec_mkdir_nfs_temp = "mkdir -p %s" % (nfs_temp)
-            exec_remote(host, _exec_mkdir_nfs_temp)
-
-            # 把安装包分发到所有节点
-            dmsg('update %s to %s' % (nfs_tar, host))
-            remote_path = os.path.join(nfs_temp, nfs_pack)
-            put_remote(host, nfs_tar, remote_path)
-
-        for host in hosts:
-            _exec_all_cmd = ""
-            # 创建etc目录
-            _exec_mkdir_nfs_etc = "mkdir -p %s" % (nfs_etc)
-            _exec_all_cmd = _exec_mkdir_nfs_etc + " && "
-
-            # 解压安装包到临时目录
-            _exec_tar_zx = "tar zxvf %s/%s -C %s > /dev/null" % (nfs_temp, nfs_pack, nfs_temp)
-            _exec_all_cmd = _exec_all_cmd + _exec_tar_zx + " && "
-
-            # 安装nfs-bin
-            _exec_install_bin = "cp -f %s/ganesha.nfsd /usr/bin" % (nfs_temp)
-            _exec_all_cmd = _exec_all_cmd + _exec_install_bin + " && "
-
-            # 安装依赖库
-            _exec_install_lib = "mkdir -p %s && tar zxvf %s/ntirpc-include.tar.gz -C %s > /dev/null" % (ntirpc_inc, nfs_temp, ntirpc_inc)
-            _exec_all_cmd = _exec_all_cmd + _exec_install_lib + " && "
-
-            _exec_install_lib = "tar zxvf %s/ntirpc-lib.tar.gz -C %s > /dev/null" % (nfs_temp, common_lib)
-            _exec_all_cmd = _exec_all_cmd + _exec_install_lib + " && "
-
-            _exec_install_lib ="mkdir -p %s && tar zxvf %s/fsal-lib.tar.gz -C %s > /dev/null" % (fsal_lib, nfs_temp, fsal_lib)
-            _exec_all_cmd = _exec_all_cmd + _exec_install_lib + " && "
-
-            if force:
-                # 安装etc-conf
-                _exec_install_nfs_conf = "cp -f %s/common.conf %s/ganesha.conf %s" % (nfs_temp, nfs_temp, nfs_etc)
-                _exec_all_cmd = _exec_all_cmd + _exec_install_nfs_conf + " && "
-
-                # 安装dbus-conf
-                _exec_install_dbus_conf = "cp -f %s/org.ganesha.nfsd.conf /etc/dbus-1/system.d/" % (nfs_temp)
-                _exec_all_cmd = _exec_all_cmd + _exec_install_dbus_conf + " && "
-
-                # 安装start-conf
-                _exec_install_start_conf = "cp -f %s/*.service /usr/lib/systemd/system" % (nfs_temp)
-                _exec_install_start_conf = _exec_install_start_conf + " && " + "cp -f %s/nfs-ganesha /etc/sysconfig" % (nfs_temp)
-                _exec_install_start_conf = _exec_install_start_conf + " && " + "mkdir -p /usr/libexec/ganesha/"
-                _exec_install_start_conf = _exec_install_start_conf + " && " + "cp -f %s/nfs-ganesha-config.sh /usr/libexec/ganesha" % (nfs_temp)
-                _exec_all_cmd = _exec_all_cmd + _exec_install_start_conf + " && "
-
-                # to load *.service file
-                #reload dameon
-                _exec_reload = "systemctl daemon-reload"
-                _exec_all_cmd = _exec_all_cmd + _exec_reload + ' && '
-
-                """
-                # to load dbus config file
-                #start message-bus
-                _exec_dbus = "systemctl restart messagebus"
-                _exec_all_cmd = _exec_all_cmd + _exec_dbus + ' && '
-
-                # restart systemd-logind
-                _exec_login = "systemctl restart systemd-logind"
-                _exec_all_cmd = _exec_all_cmd + _exec_login + ' && '
-                """
-
-            _exec_rmdir = "rm -rf %s/*" % (nfs_temp)
-            _exec_all_cmd = _exec_all_cmd + _exec_rmdir
-            dmsg("install %s to %s" % (nfs_tar, host))
-            exec_remote(host, _exec_all_cmd)
 
     def _update_tar(self, tar, hosts=None):
         src_tar = tar
@@ -201,9 +119,9 @@ class Cluster(object):
 
         def _put_remote_warp(k):
             try:
-                dmsg('update %s to %s' % (src_tar, k))
+                #dmsg('update %s to %s' % (src_tar, k))
                 put_remote(k, src_tar, remote_tmp_path)
-                dmsg('install %s to %s' % (src_tar, k))
+                #dmsg('install %s to %s' % (src_tar, k))
                 exec_remote(k, cmd_update)
             except Exp, e:
                 derror("%s : %s" % (k, e))
@@ -220,8 +138,6 @@ class Cluster(object):
             self._update_tar(tar, hosts)
         elif src is not None:
             self._update(src, hosts)
-        elif nfs is not None:
-            self._update_nfs(nfs, force, hosts)
         else:
             self._update("etc", hosts)
             self._update("app", hosts)
@@ -232,6 +148,9 @@ class Cluster(object):
 
     def _add_check_env(self, hosts):
         (distro, release, codename) = lsb_release()
+
+        dwarn("env check disabled")
+        return
 
         cmd = '''
         if [ -e '$home_t/$role_t' ]; then
@@ -246,7 +165,7 @@ class Cluster(object):
                 if [ ${is_num} -gt 0 ]; then
                     has_child=1
 
-                    if [ "$role_t" == "cds" ]; then
+                    if [ "$role_t" == "bactl" ]; then
                         if ! mount | grep $home_t/$role_t/$disk 1>/dev/null && ! [ -e $home_t/$role_t/$disk/fake ]; then
                             echo "$home_t/$role_t/$disk/ not mount" 1>&2
                             exit 1
@@ -254,20 +173,20 @@ class Cluster(object):
                     fi
 
                     for disk_child in `ls $home_t/$role_t/$disk`; do
-                        if [ $disk_child == '.' -o $disk_child == '..' -o $disk_child == 'core' -o $disk_child == 'log' -o $disk_child == 'lost+found' -o $disk_child == 'fake' -o $disk_child == 'tier' ]; then
+                        if [ $disk_child == '.' -o $disk_child == '..' -o $disk_child == 'core' -o $disk_child == 'log' -o $disk_child == 'lost+found' -o $disk_child == 'fake' -o $disk_child == 'tier' -o $disk_child == 'disk']; then
                             continue
                         else
                             echo "$home_t/$role_t/$disk/ has data!" 1>&2
                             exit 1
                         fi
                     done
-                elif [ "$role_t" == "cds" -o "$role_t" == "mond" ]; then
+                elif [ "$role_t" == "bactl" -o "$role_t" == "mdctl" ]; then
                     echo "$home_t/$role_t/$disk not a number!" 1>&2
                     exit 1
                 else
                     if [ $disk == "status" ]; then
                         for disk_child in `ls $home_t/$role_t/$disk`; do
-                            if [ $disk_child == '.' -o $disk_child == '..' -o $disk_child == 'lost+found' -o $disk_child == 'fake' ]; then
+                            if [ $disk_child == '.' -o $disk_child == '..' -o $disk_child == 'lost+found' -o $disk_child == 'fake' -o $disk_child == 'disk']; then
                                 continue
                             else
                                 echo "$home_t/$role_t/$disk/ has data!" 1>&2
@@ -324,7 +243,7 @@ class Cluster(object):
                 exec_remote(host, cmd3)
 
     def _get_services(self, host):
-        #return services = {"cds": [], "mond": []}
+        #return services = {"bactl": [], "mdctl": []}
         services = {}
         for role in self.config.roles:
             path = os.path.join(self.config.workdir, role)
@@ -336,22 +255,22 @@ class Cluster(object):
         return services
 
     def _add_check_cluster_conf(self, cluster):
-        mond = 0
+        mdctl = 0
         for h in cluster.keys():
-            mond = mond + len(cluster[h]["mond"])
-        if mond == 0:
-            raise Exp(1, "not found mond %s" % (cluster))
+            mdctl = mdctl + len(cluster[h]["mdctl"])
+        if mdctl == 0:
+            raise Exp(1, "not found mdctl %s" % (cluster))
 
         for h in cluster.keys():
-            if (len(cluster[h]['mond']) + len(cluster[h]["cds"])) == 0:
+            if (len(cluster[h]['mdctl']) + len(cluster[h]["bactl"])) == 0:
                 raise Exp(1, "not found service in %s,\n %s" % (h, cluster))
 
     def _add_update_cluster_conf(self, hosts):
         for h in hosts:
             if not self.config.cluster.has_key(h):
                 services = self._get_services(h)
-                if not services.has_key("mond"):
-                    services["mond"] = [0]
+                if not services.has_key("mdctl"):
+                    services["mdctl"] = [0]
                 
                 self.config.cluster.update({h: services})
 
@@ -381,9 +300,6 @@ class Cluster(object):
         args = [[x] for x in self.config.cluster.keys()]
         mutil_exec(_warp, args)
 
-        cmd = "python %s/app/admin/check_domain.py check" % (self.config.home)
-        exec_shell(cmd)
-
     def stop(self):
 
         def _cluster_stop(module_py, host):
@@ -411,9 +327,6 @@ class Cluster(object):
         args = [[x] for x in self.config.cluster.keys()]
         mutil_exec(_warp, args)
 
-        cmd = "python %s/app/admin/check_domain.py check" % (self.config.home)
-        exec_shell(cmd)
-        
     def stat(self):
         def _warp(h):
             cmd = "python2 %s stat" % (self.config.uss_node)
@@ -433,20 +346,20 @@ class Cluster(object):
         def _init_env_warp(h):
             cmd = "python2 %s env_init" % (self.config.uss_node)
             (out, err) = exec_remote(h, cmd)
-            print out
-            print err
+            #print out
+            #print err
         mutil_exec(_init_env_warp, [[h] for h in hosts])
 
-    def _init_mond(self, hosts):
+    def _init_mdctl(self, hosts):
         def _init_warp(h, index):
-            cmd = "python2 %s mond_init --service %s" % (
+            cmd = "python2 %s mdctl_init --service %s" % (
                         self.config.uss_node, index)
             exec_remote(h, cmd)
 
         init_args = []
         for h in hosts:
-            for i in self.config.cluster[h]['mond']:
-                print 'init mond', h, i
+            for i in self.config.cluster[h]['mdctl']:
+                print 'init mdctl', h, i
                 _init_warp(h, i)
                 #init_args.append([h, i])
 
@@ -459,46 +372,11 @@ class Cluster(object):
 
     def _start_service(self, hosts):
         def _start_srv_warp(h):
-            cmd = "python2 %s startsrv" % (self.config.uss_node)
-            dmsg(cmd)
+            cmd = "python2 %s start" % (self.config.uss_node)
+            #dmsg(cmd)
             exec_remote(h, cmd)
 
         mutil_exec(_start_srv_warp, [[h] for h in hosts])
-
-    def _init_system(self):
-        cmd = "sdfs.mkdir /system"
-        exec_shell(cmd)
-        '''
-        移动集采 暂时关闭
-        '''
-        #cmd = "sdfs.mkdir /nfs_minio"
-        #exec_shell(cmd)
-
-        #test nfs-ganesha
-        if self.config.testing:
-            cmd = "sdfs.mkdir /nfs-ganesha"
-            exec_shell(cmd)
-
-        '''
-        移动集采 暂时关闭
-        cmd = "sdfs.mkdir /small -g leveldb"
-        exec_shell(cmd)
-        '''
-
-        derror("worm disabled")
-        #cmd = "sdfs.worm --init"
-        #exec_shell(cmd)
-
-    def _init_secret_key(self):
-        uuid_str = str(uuid.uuid1())
-        cmd = "%s -s secret_key -V %s /system" % (self.config.uss_attr, uuid_str)
-        exec_shell(cmd)
-
-    def _init_create_time(self):
-        #todo
-        now = long(time.time())
-        cmd = "sdfs.attr -s create_time -V %ld /system" % (now)
-        exec_shell(cmd)
 
     def _init_etcd(self, hosts):
         def _init_etcd_(self, host, statue, lst):
@@ -506,37 +384,30 @@ class Cluster(object):
             for i in lst:
                 s = s + "%s," % (i)
                 cmd = "%s etcd --state %s --hosts %s" % (self.config.uss_node, statue, s[:-1])
-            dmsg(cmd)
+            #dmsg(cmd)
             (out, err) = exec_remote(host, cmd)
+            """
             if (out):
                 dmsg(host + ":\n" + out)
             if (err):
                 dwarn(host + ":\n" + err)
+            """
 
         args = [[self, k, 'new', hosts] for (k) in hosts]
         mutil_exec(_init_etcd_, args)
             
     def create(self, hosts):
-        self._add_check_env(hosts)
-        '''
-        if self.config.use_redis():
-        '''
+        #self._add_check_env(hosts)
+        dmsg("update ...")
         self.update(hosts=hosts)
+        dmsg("init etcd ...")
         self._init_etcd(hosts=hosts)
-        #self._init_redis()
-        #self._start_redis()
-
+        dmsg("init cluster config ...")
         conf = ClusterConf(config=self.config, lock=False)
+        dmsg("add node ...")
         self.config = conf.add_node(hosts)
-        
-        #self._add_update_cluster_conf(hosts)
-        #self._init_atomicid()
         self._init_env(hosts)
-        self._init_root()
-        self._init_mond(hosts)
-        self._init_system()
-        self._init_create_time()
-        self._init_secret_key()
+        dmsg("start service ...")
         self._start_service(hosts)
 
     def _add_etcd(self, hosts):
@@ -557,7 +428,7 @@ class Cluster(object):
 
         self._add_etcd(new_hosts);
         self._init_env(new_hosts)
-        self._init_mond(hosts)
+        #self._init_mdctl(hosts)
         self._start_service(new_hosts)
 
     def dropnode(self, hosts, force=False):
@@ -874,6 +745,7 @@ class Cluster(object):
         _exec_attr_set = "%s -s mode -V ldap /system" % (self.config.uss_attr)
         exec_shell(_exec_attr_set)
 
+    """
     def _ldap_disable(self, server, dn):
         cmd = 'authconfig --disableldap --disableldapauth --ldapserver="%s" --ldapbasedn="%s" --enablemkhomedir --update' % (server, dn)
         print cmd
@@ -914,6 +786,7 @@ class Cluster(object):
                 dmsg("server %s dn %s, skip disable" % (server, dn))
                 return None
             self._ldap_disable(server, dn)
+    """
 
     def viplist(self, json_show=False):
         if not os.path.isfile(self.config.vip_conf):
@@ -1158,7 +1031,7 @@ if __name__ == "__main__":
 
     def _create(args, cluster):
         hosts = args.hosts.split(",")
-        dmsg("create cluster %s" % (hosts))
+        #dmsg("create cluster %s" % (hosts))
         cluster.create(hosts)
     parser_create = subparsers.add_parser('create', help='create cluster')
     parser_create.add_argument("--hosts", required=True, help="host1,host2,...")
@@ -1239,32 +1112,6 @@ if __name__ == "__main__":
     parser_groupdel = subparsers.add_parser('groupdel', help='del a group')
     parser_groupdel.add_argument("--name", required=True, help="group name")
     parser_groupdel.set_defaults(func=_groupdel)
-
-    def _ldap(args, cluster):
-        able = None
-        if args.config == "enable":
-            able = True
-        elif args.config == "disable":
-            able = False
-        else:
-            raise Exp(errno.EINVAL, "invalid, need enable or disable")
-        cluster.ldap(able)
-    parser_ldap = subparsers.add_parser('ldap', help='enable or disable ldap')
-    parser_ldap.add_argument("--config", required=True, help="enable or disable")
-    parser_ldap.set_defaults(func=_ldap)
-
-    def _ad(args, cluster):
-        able = None
-        if args.config == "enable":
-            able = True
-        elif args.config == "disable":
-            able = False
-        else:
-            raise Exp(errno.EINVAL, "invalid, need enable or disable")
-        cluster.ad(able)
-    parser_ad = subparsers.add_parser('ad', help='enable or disable ad')
-    parser_ad.add_argument("--config", required=True, help="enable or disable")
-    parser_ad.set_defaults(func=_ad)
 
     def _vip_list(args, cluster):
         cluster.viplist(args.json)

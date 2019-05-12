@@ -21,6 +21,17 @@ int nid_cmp(const nid_t *keyid, const nid_t *dataid)
         return ret;
 }
 
+int coreid_cmp(const coreid_t *id1, const coreid_t *id2)
+{
+        int ret;
+        
+        ret = nid_cmp(&id1->nid, &id2->nid);
+        if (ret)
+                return ret;
+
+        return id1->idx - id2->idx;
+}
+
 int verid64_cmp(const verid64_t *keyid, const verid64_t *dataid)
 {
         int ret;

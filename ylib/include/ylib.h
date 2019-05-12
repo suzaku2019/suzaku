@@ -10,7 +10,7 @@
 #include <uuid/uuid.h>
 
 #include "array_table.h"
-#include "hash_table.h"
+#include "htab.h"
 #include "nls.h"
 #include "etcd.h"
 #include "sdfs_conf.h"
@@ -20,32 +20,9 @@
 #include "ypath.h"
 #include "cache.h"
 #include "kv.h"
+#include "plock.h"
 #include "sysutil.h"
 #include "mini_hashtb.h"
-
-typedef struct {
-        chkid_t id;
-        uint64_t snapvers;
-        //vclock_t vclock;
-        uint64_t lease;
-        union {
-                uint64_t offset;
-                struct {
-                        uint32_t chunk_off:20;  // 1M
-                        uint32_t chunk_id:32;
-                        uint32_t __pad:12;
-                };
-        };
-        uint32_t size;
-        uint32_t flags;
-        uint64_t lsn;
-} io_t;
-
-
-typedef struct {
-        uint32_t addr;
-        uint32_t port;
-} addr_t;
 
 /* auth.c */
 extern int chech_auth_shadow(const char *user, const char *passwd);
@@ -64,6 +41,7 @@ extern void array_table_destroy(atable_t);
 extern int nid_cmp(const nid_t *key, const nid_t *data);
 extern int nid_void_cmp(const void *key, const void *data);
 extern int verid64_void_cmp(const void *key, const void *data);
+extern int coreid_cmp(const coreid_t *id1, const coreid_t *id2);
 
 /*md5.c  */
 typedef unsigned char *POINTER; /* POINTER defines a generic pointer type */
@@ -94,22 +72,6 @@ int server_run(int daemon, const char *lockname, int seq, int (*server)(void *),
 /* hash.c */
 extern uint32_t hash_str(const char *str);
 extern uint32_t hash_mem(const void *mem, int size);
-
-/* hash_table.c */
-extern hashtable_t hash_create_table(int (*compare_func)(const void *, const void *),
-                                     uint32_t (*key_func)(const void *), const char *name);
-extern void *hash_table_find(hashtable_t, void *comparator);
-extern int hash_table_insert(hashtable_t, void *value, void *comparator,
-                             int overwrite);
-extern int hash_table_remove(hashtable_t, void *comparator, void **value);
-extern void hash_iterate_table_entries(hashtable_t,
-                                       void (*handler)(void *, void *),
-                                       void *arg);
-extern void hash_filter_table_entries(hashtable_t, int (*handler)(void *, void *),
-                                      void *arg, void (*thunk)(void *));
-extern void hash_destroy_table(hashtable_t, void (*thunk)(void *, void *arg), void *arg);
-int hashtable_resize(hashtable_t t, int size);
-int hashtable_size(hashtable_t t);
 
 /* lock.c */
 extern int sy_rwlock_init(sy_rwlock_t *rwlock, const char *name);
@@ -146,6 +108,11 @@ int ymalloc2(void **_ptr, size_t size);
 extern int ymalign(void **_ptr, size_t align, size_t size);
 extern int yrealloc(void **_ptr, size_t size, size_t newsize);
 extern int yfree(void **ptr);
+
+extern int huge_malloc(void **ptr, size_t size);
+extern int huge_free(void **ptr);
+extern int huge_realloc(void **_ptr, size_t size, size_t newsize);
+
 
 /* nls.c */
 extern int nls_getable(char *charset, struct nls_table **);

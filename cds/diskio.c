@@ -20,19 +20,16 @@
 #include "md_proto.h"
 #include "ylib.h"
 #include "ynet_rpc.h"
-#include "yfs_chunk.h"
 #include "sdfs_lib.h"
-#include "cd_proto.h"
-#include "job_dock.h"
-#include "job_tracker.h"
 #include "aio.h"
 #include "md_lib.h"
 #include "diskio.h"
-#include "../yfs/cds/disk.h"
+#include "disk.h"
 #include "net_global.h"
 #include "dbg.h"
 #include "adt.h"
 
+#if 0
 typedef struct {
         sem_t sem;
         aio_context_t  ctx;
@@ -69,14 +66,16 @@ static int __diskio_submit()
         iocb = iocb_mt->iocb;
         
         if (iocb->aio_lio_opcode == IO_CMD_PWRITEV) {
-                ret = pwritev(iocb->aio_fildes, (void *)iocb->aio_buf, iocb->aio_nbytes, iocb->aio_offset);
+                ret = pwritev(iocb->aio_fildes, (void *)iocb->aio_buf,
+                              iocb->aio_nbytes, iocb->aio_offset);
                 if (ret < 0) {
                         ret = errno;
                         GOTO(err_ret, ret);
                 }
         } else {
                 YASSERT(iocb->aio_lio_opcode == IO_CMD_PREADV);
-                ret = preadv(iocb->aio_fildes, (void *)iocb->aio_buf, iocb->aio_nbytes, iocb->aio_offset);
+                ret = preadv(iocb->aio_fildes, (void *)iocb->aio_buf,
+                             iocb->aio_nbytes, iocb->aio_offset);
                 if (ret < 0) {
                         ret = errno;
                         GOTO(err_ret, ret);
@@ -212,3 +211,5 @@ int diskio_init()
 err_ret:
         return ret;
 }
+
+#endif

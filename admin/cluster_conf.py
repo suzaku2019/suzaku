@@ -47,7 +47,7 @@ class ClusterConf:
         self.lock.release()
         
     def _get_services(self, host):
-        #return services = {"cds": [], "mond": []}
+        #return services = {"bactl": [], "mds": []}
         services = {}
         for role in self.config.roles:
             path = os.path.join(self.config.workdir, role)
@@ -59,14 +59,14 @@ class ClusterConf:
         return services
 
     def _add_check_cluster_conf(self, cluster):
-        mond = 0
+        mds = 0
         for h in cluster.keys():
-            mond = mond + len(cluster[h]["mond"])
-        if mond == 0:
-            raise Exp(1, "not found mond %s" % (cluster))
+            mds = mds + len(cluster[h]["mds"])
+        if mds == 0:
+            raise Exp(1, "not found mds %s" % (cluster))
 
         for h in cluster.keys():
-            if (len(cluster[h]['mond']) + len(cluster[h]["cds"])) == 0:
+            if (len(cluster[h]['mds']) + len(cluster[h]["bactl"])) == 0:
                 raise Exp(1, "not found service in %s,\n %s" % (h, cluster))
 
     def add_node(self, hosts):
@@ -78,8 +78,8 @@ class ClusterConf:
         for h in hosts:
             if not self.config.cluster.has_key(h):
                 services = self._get_services(h)
-                if not services.has_key("mond"):
-                    services["mond"] = [0]
+                if not services.has_key("mds"):
+                    services["mds"] = [0]
                 
                 self.config.cluster.update({h: services})
 
@@ -101,7 +101,7 @@ class ClusterConf:
 
         for d in disks:
             if not self.config.service.has_key(d):
-                self.config.service["cds"].append(d)
+                self.config.service["bactl"].append(d)
 
         self.config.cluster.update({self.config.hostname: self.config.service})
 

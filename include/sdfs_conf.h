@@ -98,6 +98,8 @@
 #define YFS_LINEAR_DATA_FLOW 0
 #define CDS_DATA_CACHE 0
 
+#define SYSYTEM_NAME "sdfs"
+
 #define YFS_CONFIGURE_FILE SDFS_HOME"/etc/sdfs.conf"
 #define YFTP_PASSWORD_FILE SDFS_HOME"/etc/ftp.conf"
 #define YNFS_CONFIGURE_FILE SDFS_HOME"/etc/exports.conf"
@@ -157,8 +159,7 @@ typedef long long LLD;
 #define XFS_SUPER_MAGIC      0x58465342
 #define JFS_SUPER_MAGIC 0x3153464a
 
-#define YFS_CHK_REP_MAX (32)
-#define YFS_CHK_SIZE   (sizeof(char) * 1024 * 1024 * 64)     /* 64MB */
+#define YFS_CHKINFO_SIZE   (sizeof(char) * 1024 * 1024 * 64)     /* 64MB */
 
 
 /*magic in disk*/
@@ -179,12 +180,6 @@ typedef long long LLD;
 #define LEVELDB_QUEUE_MAX 48
 
 //#define NETWORK_CONF SDFS_HOME"/etc/cluster.conf"
-
-#if 0
-#define __CENTOS5__
-#endif
-
-#define PIPE_SIZE (4096 * 16)
 
 #define DEBUG_NULL_NID
 
@@ -211,48 +206,38 @@ typedef struct {
 #define USEC_PER_HOU                ((LLU)USEC_PER_SEC * SEC_PER_HOU)
 #define USEC_PER_DAY                ((LLU)USEC_PER_SEC * SEC_PER_DAY)
 
-#define ROLE_MOND "mond"
-#define ROLE_CDS "cds"
-#define ROLE_NFS3 "nfs3"
-#define ROLE_FTP "ftp"
+#define ROLE_MDCTL "mdctl"
+#define ROLE_BACTL "bactl"
+#define ROLE_FRCTL "frctl"
 
-#define ETCD_REDIS "redis"
-#define ETCD_VOLUME "volume"
-#define ETCD_CDS "cds"
-#define ETCD_DISKMAP "diskmap"
+#define ETCD_POOL "pool"
+#define ETCD_KV "kv"
+#define ETCD_INSTANCE "instance"
+#define ETCD_PARTITION "partition"
 
 #define ENABLE_HEARTBEAT 1
 
 #define ENABLE_CORENET 1
-#define ENABLE_CORERPC 1
 #define ENABLE_COREAIO 1
 #define ENABLE_COREAIO_THREAD 0
 
+#define ENABLE_EC
+
 #define ENABLE_QUOTA 0
 #define ENABLE_MD_POSIX 0
-#define ENABLE_KLOCK 1
+#define ENABLE_KLOCK 0
 
 #define SDFS_SYSTEM_VOL "system"
 
 #define REDIS_CONN_POOL 64
 
-#define ENABLE_CO_WORKER 1
-
-#if ENABLE_CO_WORKER
-#define ENABLE_REDIS_CO 1
-#else
-#define ENABLE_CORE_PIPELINE 1
-#endif
-
 #define ENABLE_REDIS_PIPELINE 0
 
 #define ENABLE_LOCK_FREE_LIST 0
 
-#define ENABLE_ATTR_QUEUE 1
+#define ENABLE_ATTR_QUEUE 0
 
 #define MAX_READDIR_ENTRIES 400
-
-#define YFS_META_VERSION "meta (2017Q3)\n"
 
 #define FAKE_BLOCK 4096
 
@@ -260,4 +245,14 @@ typedef struct {
 
 #define ENABLE_MEM_CACHE1 0
 
+#define SDFS_CHUNK_SPLIT (1024 * 1024 * 4)
+
+#define SDFS_REPLICA_MIN 2
+#define SDFS_REPLICA_MAX 8
+#define SDFS_SECTOR_SIZE         (512)
+#define SDFS_POLLING_MAX (20)
+
+#define YFS_CHK_REP_MAX (SDFS_REPLICA_MAX)
+
 #endif
+

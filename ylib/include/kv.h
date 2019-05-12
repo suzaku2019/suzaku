@@ -1,11 +1,11 @@
 #ifndef __KV_H__
 #define __KV_H__
 
-#include "hash_table.h"
+#include "htab.h"
 #include "sdfs_lib.h"
 
 typedef struct {
-        hashtable_t tab;
+        htab_t tab;
         struct list_head list;
 } kv_ctx_t;
 

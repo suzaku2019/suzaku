@@ -29,9 +29,11 @@
 #include "adt.h"
 #include "nodeid.h"
 #include "net_table.h"
+#include "net_rpc.h"
 #include "heartbeat.h"
-#include "dbg.h"
 #include "main_loop.h"
+#include "diskid.h"
+#include "dbg.h"
 
 #define REPLICA_MAX YFS_CHK_REP_MAX
 #define INFO_QUEUE_LEN (2 * 1024 * 1024)
@@ -74,8 +76,9 @@ static uint32_t __ltime_seq__ = 1;
 
 
 typedef struct {
-        uint64_t load;
+        int64_t load;
         nid_t nid;
+        diskid_t diskid;
 } section_t;
 
 typedef struct {
@@ -185,7 +188,7 @@ static void __netable_reset_handler_add(entry_t *ent, func1_t handler, void *ctx
         list_for_each(pos, &ent->reset_handler) {
                 reset = (void *)pos;
 
-                if (reset->handler == handler) {
+                if (reset->ctx == ctx) {
                         DWARN("handler exist\n");
                         return;
                 }
@@ -264,7 +267,7 @@ static int __entry_create(entry_t **_ent, const nid_t *nid)
         int ret;
         entry_t *ent;
 
-        ret = ymalloc((void **)&ent, sizeof(*ent));
+        ret = huge_malloc((void **)&ent, sizeof(*ent));
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -274,6 +277,7 @@ static int __entry_create(entry_t **_ent, const nid_t *nid)
         ent->nh.u.nid = *nid;
         ent->status = NETABLE_NULL;
         ent->info = NULL;
+        ent->cores = -1;
         ent->update = gettime();
         ent->last_retry = 0;
         LTIME_INIT(&ent->ltime);
@@ -288,7 +292,7 @@ static int __entry_create(entry_t **_ent, const nid_t *nid)
 
         return 0;
 err_free:
-        yfree((void **)&ent);
+        huge_free((void **)&ent);
 err_ret:
         return ret;
 }
@@ -319,8 +323,8 @@ static int __iterate_handler(void *arg_null, void *net)
                 DINFO("%s, load: %llu, status %u, info %p\n", ent->lname,
                       (LLU)ent->load, ent->status, ent->info);
         } else {
-                DINFO("%s, load: %llu, status %u, deleting %u\n", ent->lname,
-                      (LLU)ent->load, ent->status, ent->info->deleting);
+                DINFO("%s, load: %llu, status %u\n", ent->lname,
+                      (LLU)ent->load, ent->status);
         }
 
         netable_unlock(&nid);
@@ -440,6 +444,7 @@ out:
 err_lock:
         LTIME_DROP(&ent->ltime);
         ent->status = NETABLE_DEAD;
+        ent->cores = -1;
         ent->last_retry = gettime();
         netable_unlock(&nid);
 err_ret:
@@ -496,7 +501,7 @@ int netable_init(int daemon)
 
         (void) daemon;
 
-        ret = ymalloc((void**)&array, sizeof(*array) * NODEID_MAX);
+        ret = huge_malloc((void**)&array, sizeof(*array) * NODEID_MAX);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -510,12 +515,6 @@ int netable_init(int daemon)
         }
 
         __net_table__ = array;
-
-#if 0
-        ret = jobdock_worker_create(&hb_jobtracker, "heartbeat");
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-#endif
 
         ret = ymalloc((void**)&netable_infoqueue, 
                       sizeof(*netable_infoqueue) + INFO_QUEUE_LEN);
@@ -557,7 +556,7 @@ int netable_destroy(void)
 
         //sem_wait(&netable_exit_sem);
 
-        //hash_destroy_table(net_table, NULL);
+        //htab_destroy(net_table, NULL);
 
         return 0;
 }
@@ -640,10 +639,6 @@ int netable_connect_info(net_handle_t *nh, const ynet_net_info_t *info, int forc
 
         YASSERT(!net_isnull(&info->id));
 
-        if (info->deleting) {
-                maping_drop(HOST2NID, info->name);
-        }
-
         main_loop_hold();
 
 retry:
@@ -690,6 +685,7 @@ static void __netable_close1(entry_t *ent)
 
         LTIME_DROP(&ent->ltime);
         ent->status = NETABLE_DEAD;
+        ent->cores = -1;
         //ent->unstable = 0;
 
         if (ent->info) {
@@ -865,7 +861,11 @@ void netable_load_update(const nid_t *nid, uint64_t load)
 
         ANALYSIS_BEGIN(0);
 
-        YASSERT(!net_isnull(nid));
+
+        if (unlikely(net_isnull(nid))) {
+                return;
+        }
+
         ent = __netable_nidfind(nid);
         if (ent == NULL) {
                 return;
@@ -1181,10 +1181,6 @@ out:
 
         ANALYSIS_END(0, 1000 * 100, NULL);
 
-        if (info->deleting) {
-                maping_drop(HOST2NID, info->name);
-        }
-
         return 0;
 err_ret:
         return ret;
@@ -1235,9 +1231,9 @@ static int __netable_load_cmp(const void *arg1, const void *arg2)
         return sec1->load - sec2->load;
 }
 
-void netable_sort(nid_t *nids, int count)
+void netable_sort(diskid_t *nids, int count)
 {
-        int i;
+        int ret, i;
         ynet_net_conn_t *net;
         section_t section[REPLICA_MAX], *sec;
         char buf[MAX_NAME_LEN];
@@ -1249,14 +1245,18 @@ void netable_sort(nid_t *nids, int count)
 
         for (i = 0; i < count; i++) {
                 sec = &section[i];
-                sec->nid = nids[i];
+                sec->diskid = nids[i];
+                ret = d2n_nid(&sec->diskid, &sec->nid);
+                if (unlikely(ret))
+                        UNIMPLEMENTED(__DUMP__);
 
                 if (net_islocal(&sec->nid)) {
                         sec->load = core_latency_get();
                 } else {
                         net = __netable_nidfind(&sec->nid);
                         if (net == NULL || net->status != NETABLE_CONN) {
-                                DINFO("%s not online, no balance\n", netable_rname_nid(&sec->nid));
+                                DINFO("%s not online, no balance\n",
+                                      netable_rname_nid(&sec->nid));
                                 return;
                         }
 
@@ -1272,9 +1272,10 @@ void netable_sort(nid_t *nids, int count)
         qsort(section, count, sizeof(section_t), __netable_load_cmp);
         for (i = 0; i < count; i++) {
                 sec = &section[i];
-                nids[i] = sec->nid;
+                nids[i] = sec->diskid;
 
-                DBUG("node[%u] %s latency %llu\n", i, netable_rname_nid(&sec->nid), (LLU)section[i].load);
+                DBUG("node[%u] %s latency %llu\n", i, netable_rname_nid(&sec->nid),
+                     (LLU)section[i].load);
         }
 }
 
@@ -1506,7 +1507,8 @@ int netable_dump_hb_timeout(char *lname)
 
         now = gettime();
         strftime(time_buf, MAX_LINE_LEN, "%F %T", localtime_safe(&now, &t));
-        sprintf(line, "%s; "NID_FORMAT"; %s; %s\n", time_buf, NID_ARG(&ng.local_nid), ng.name, lname);
+        sprintf(line, "%s; "NID_FORMAT"; %s; %s\n", time_buf,
+                NID_ARG(&ng.local_nid), ng.name, lname);
         ret = fwrite(line, 1, strlen(line), fp);
         if (ret != (int)strlen(line)) {
                 ret = errno;
@@ -1590,12 +1592,6 @@ int netable_accept(const ynet_net_info_t *info, const net_handle_t *sock)
         DINFO("accept %s sd %d\n", info->name, sock->u.sd.sd);
         
         YASSERT(!net_isnull(&info->id));
-
-        if (info->deleting) {
-                maping_drop(HOST2NID, info->name);
-        }
-
-        YASSERT(!net_islocal(&info->id));
 
 retry:
         ent = __netable_nidfind(&info->id);
@@ -1707,4 +1703,33 @@ time_t netable_last_update(const nid_t *nid)
 void netable_put(net_handle_t *nh, const char *why)
 {
         netable_close(&nh->u.nid, why, NULL);
+}
+
+int netable_cores(const nid_t *nid, uint32_t *cores)
+{
+        int ret;
+        entry_t *ent;
+
+        ent = __netable_nidfind(nid);
+        if (ent == NULL) {
+                ret = ENONET;
+                GOTO(err_ret, ret);
+        }
+
+        if (ent->status != NETABLE_CONN) {
+                ret = ENONET;
+                GOTO(err_ret, ret);
+        }
+
+        if (ent->cores == -1) {
+                ret = net_rpc_cores(nid, &ent->cores);
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+        }
+
+        *cores = ent->cores;
+        
+        return 0;
+err_ret:
+        return ret;
 }

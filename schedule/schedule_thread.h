@@ -9,6 +9,7 @@ typedef enum {
         SCHE_THREAD_ETCD,
         SCHE_THREAD_REDIS,
         SCHE_THREAD_REPLICA,
+        SCHE_THREAD_DISK,
         SCHE_THREAD_MAX,
 } sche_thread_type_t;
 

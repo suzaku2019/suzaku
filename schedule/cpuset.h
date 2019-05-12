@@ -18,6 +18,7 @@ int cpuset_init();
 int get_cpunode_count();
 
 int cpuset_useable();
+int cpuset_count(int *count);
 void cpuset_getcpu(coreinfo_t **master, int *slave);
 int cpuset(const char *name, int cpu);
 void cpuset_unset(int cpu);

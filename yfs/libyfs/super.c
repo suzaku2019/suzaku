@@ -12,7 +12,7 @@
 #include "sdfs_lib.h"
 #include "dbg.h"
 
-#if 1
+#if 0
 int ly_statvfs(const char *path, struct statvfs *svbuf)
 {
         int ret;

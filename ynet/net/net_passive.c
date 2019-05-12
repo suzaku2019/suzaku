@@ -10,6 +10,7 @@
 #include "net_global.h"
 #include "ynet_conf.h"
 #include "schedule.h"
+#include "cpuset.h"
 #include "ynet_net.h"
 #include "dbg.h"
 
@@ -206,7 +207,6 @@ int net_getinfo(char *infobuf, uint32_t *infobuflen, uint32_t port)
              NID_ARG(&info->id), info->info_count, port);
 
         __net_checkinfo(info->info, info->info_count);
-        ((ynet_net_info_t *)infobuf)->deleting = 0;
 
         return 0;
 err_ret:

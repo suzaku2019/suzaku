@@ -43,7 +43,7 @@ static int __md_quota_key(const fileid_t *quotaid, const quota_t *quota, fileid_
                 ret = kvop->get(roottype_quota, key, (void *)&fileid, &size);
                 if(ret) {
                         if (ret == ENOENT && (flag & O_CREAT)) {
-                                ret = md_attr_getid(&fileid, NULL, ftype_vol, NULL);
+                                ret = md_attr_getid(&fileid, NULL, ftype_pool, NULL);
                                 if(ret)
                                         GOTO(err_ret, ret);
 
@@ -155,7 +155,7 @@ int md_create_quota(quota_t *quota)
         fileid_t quotaid;
         int ret;
 
-        ret = md_attr_getid(&quota->quotaid, NULL, ftype_vol, NULL);
+        ret = md_attr_getid(&quota->quotaid, NULL, ftype_pool, NULL);
         if(ret)
                 GOTO(err_ret, ret);
 
@@ -428,7 +428,7 @@ err_ret:
 static int _get_lvm_prefix(const fileid_t *lvmid, char *_prefix, size_t *prefix_len, int quota_type)
 {
         char prefix[MAX_NAME_LEN] = {0};
-        uint64_t volid = lvmid->volid;
+        uint64_t volid = lvmid->poolid;
 
         if(quota_type == QUOTA_GROUP) {
                 snprintf(prefix, MAX_NAME_LEN, "%s_%llu*", QUOTA_GROUP_PREFIX, (LLU)volid);
@@ -485,53 +485,3 @@ err_ret:
         return ret;
 #endif
 }
-
-#if 0
-int md_list_quota(const quota_t *quota_owner,
-                  quota_type_t quota_type,
-                  quota_t **quota,
-                  int *len)
-{
-        int ret, reqlen;
-        mdp_quota_req_t _req;
-        mdp_quota_req_t *req = &_req;
-        buffer_t buf;
-        void *ptr = NULL;
-        buffer_t *reply = NULL;
-
-        reqlen = sizeof(mdp_quota_req_t);
-        req->op = MDP_LISTQUOTA;
-        req->quota = *quota_owner;
-        req->quota_type = quota_type;
-
-        mbuffer_init(&buf, 0);
-        ret = rpc_request_wait2("mdc_list_quota", &ng.mds_nh.u.nid,
-                                req, reqlen, &buf, MSG_MDP,
-                                NIO_NORMAL, _get_timeout());
-        if (ret)
-                GOTO(err_free, ret);
-
-        reply = &buf;
-        if (reply && reply->len > 0) {
-                ret = ymalloc(&ptr, reply->len);
-                if (ret)
-                        GOTO(err_free, ret);
-
-                mbuffer_get(reply, ptr, reply->len);
-                *len = reply->len;
-        } else {
-                ptr = NULL;
-                *len = 0;
-        }
-
-        *quota = ptr;
-
-        mbuffer_free(&buf);
-        return 0;
-err_free:
-        mbuffer_free(&buf);
-        return ret;
-}
-#endif
-
-

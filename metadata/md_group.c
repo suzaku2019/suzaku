@@ -106,6 +106,8 @@ int md_list_groupinfo(group_t **_group, int *count)
         int ret, i;
         redisReply *reply, *e1, *v1;
         group_t *group;
+
+        UNIMPLEMENTED(__DUMP__);
         
         reply = kvop->scan(roottype_group, NULL, 0);
         if (reply == NULL || reply->type != REDIS_REPLY_ARRAY) {

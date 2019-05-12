@@ -194,9 +194,9 @@ int main(int argc, char *argv[])
                         GOTO(err_ret, ret);
         } else {
 #ifdef __x86_64__
-                ret = sscanf(path, "%lu_v%lu", &fileid.id, &fileid.volid);
+                ret = sscanf(path, "%lu_v%lu", &fileid.id, &fileid.poolid);
 #else
-                ret = sscanf(path, "%llu_v%llu", &fileid.id, &fileid.volid);
+                ret = sscanf(path, "%llu_v%llu", &fileid.id, &fileid.poolid);
 #endif
                 if (ret != 2) {
                         ret = EINVAL;

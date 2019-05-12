@@ -12,7 +12,7 @@
 #define DELBIT(a, n) (a[n/CHAR_BIT] &= (~(1<<(n%CHAR_BIT))))
 #define GETBIT(a, n) (a[n/CHAR_BIT] &  (1<<(n%CHAR_BIT)))
 
-int bmap_create(bmap_t *bmap, uint32_t size)
+int bmap_create(bmap_t *bmap, uint64_t size)
 {
         int ret;
         size_t len;
@@ -29,6 +29,7 @@ int bmap_create(bmap_t *bmap, uint32_t size)
         _memset(bmap->bits, 0x0, len);
 
         bmap->nr_one = 0;
+        bmap->nofree = 0;
         bmap->len = len;
 	bmap->size = size;
 
@@ -41,10 +42,13 @@ err_ret:
 
 int bmap_destroy(bmap_t *bmap)
 {
-        return yfree((void **)&bmap->bits);
+        if (bmap->nofree)
+                return 0;
+        else
+                return yfree((void **)&bmap->bits);
 }
 
-int bmap_set(bmap_t *bmap, uint32_t off)
+int bmap_set(bmap_t *bmap, uint64_t off)
 {
         if (bmap_get(bmap, off))
                 return EEXIST;
@@ -57,12 +61,12 @@ int bmap_set(bmap_t *bmap, uint32_t off)
  * @retval 0
  * @retval 1
  */
-int bmap_get(const bmap_t *bmap, uint32_t off)
+int bmap_get(const bmap_t *bmap, uint64_t off)
 {
         return GETBIT(bmap->bits, off%bmap->size);
 }
 
-int bmap_del(bmap_t *bmap, uint32_t off)
+int bmap_del(bmap_t *bmap, uint64_t off)
 {
 
         if (bmap_get(bmap, off)) {
@@ -78,12 +82,14 @@ int bmap_full(const bmap_t *bmap)
         return (bmap->size == bmap->nr_one) ? 1 : 0;
 }
 
-void bmap_load(bmap_t *bmap, char *opaque, int len)
+void bmap_load(bmap_t *bmap, char *opaque, uint64_t len)
 {
         int i;
 
         bmap->bits = opaque;
         bmap->size = len * CHAR_BIT;
+        bmap->nofree = 1;
+        bmap->len = len;
 
         for (i = 0; i < (int)bmap->size; i++) {
                 if (bmap_get(bmap, i))
@@ -91,9 +97,9 @@ void bmap_load(bmap_t *bmap, char *opaque, int len)
         }
 }
 
-int bmap_get_empty(bmap_t *bmap)
+uint64_t bmap_get_empty(bmap_t *bmap)
 {
-        int idx, j, i;
+        uint64_t idx, j, i;
         unsigned char c;
 
         if (bmap_full(bmap)) 
@@ -105,11 +111,11 @@ int bmap_get_empty(bmap_t *bmap)
         idx = 0;
 #endif
 
-        for (i = 0; i < (int)bmap->size / CHAR_BIT; i++) {
+        for (i = 0; i < bmap->size / CHAR_BIT; i++) {
                 c = bmap->bits[(i + idx) % bmap->size];
                 if (c != 0xff) {
                         for (j = 0; j < CHAR_BIT; j++) {
-                                if (((1 < j) & c) == 0) {
+                                if (((1 << j) & c) == 0) {
                                         return j + ((i + idx) % bmap->size) * CHAR_BIT;
                                 }
                         }

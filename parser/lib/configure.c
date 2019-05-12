@@ -139,6 +139,7 @@ int conf_init(const char *conf_path)
         gloconf.write_back = 1;
         gloconf.coredump = 1;
         gloconf.backtrace = 0;
+        gloconf.cluster_id = 0;
         gloconf.testing = 0;
         gloconf.rpc_timeout = 10;
         gloconf.hb_timeout = 5;
@@ -148,14 +149,15 @@ int conf_init(const char *conf_path)
         mdsconf.redis_sharding = 3;
         mdsconf.redis_replica = 2;
         mdsconf.redis_thread = 0;
-        mdsconf.ac_timeout = ATTR_QUEUE_TMO * 2;
-        //mdsconf.ac_timeout = 0;
+        //mdsconf.ac_timeout = ATTR_QUEUE_TMO * 2;
+        mdsconf.master_timeout = 3;
         mdsconf.redis_baseport = REDIS_BASEPORT;
 
         snprintf(gloconf.workdir, MAX_PATH_LEN, "%s/data", SDFS_HOME);
 
         gloconf.rdma = 0;
         sanconf.tcp_discovery = 0;
+        sanconf.iscsi_port = 3260;        
         
         cdsconf.disk_timeout = 60;
         cdsconf.unlink_async = 1;
@@ -174,7 +176,6 @@ int conf_init(const char *conf_path)
         strcpy(gloconf.cluster_name, "uss");
         strcpy(gloconf.uuid, "f7f67a9bf59e4f8096ff9222a12fa3c0");//fake uuid
         mdsconf.chknew_hardend = 1;
-        mdsconf.main_loop_threads = 6;
         mdsconf.size_on_md = 0;
 
         gloconf.performance_analysis = 0;
@@ -188,7 +189,7 @@ int conf_init(const char *conf_path)
         gloconf.valgrind = 0;
         strcpy(gloconf.master_vip, "\0");
         gloconf.polling_core = 8;
-        gloconf.polling_timeout = 0; //秒
+        gloconf.polling_timeout = 5; //秒
         gloconf.aio_core = 0;
         gloconf.wmem_max = SO_XMITBUF;
         gloconf.rmem_max = SO_XMITBUF;
@@ -205,7 +206,7 @@ int conf_init(const char *conf_path)
         gloconf.disk_worker = 1;
 
         gloconf.hb = 2; //默认2秒
-        gloconf.main_loop_threads = 4;
+        gloconf.main_loop_threads = 2;
         gloconf.schedule_physical_package_id = -1;
         gloconf.max_lvm = 1024*8; //默认8K，最大64K
 
@@ -538,11 +539,6 @@ int set_value(const char* key, const char* value, int type)
                 mdsconf.redis_replica = _value;
         else if (keyis("redis_thread", key))
                 mdsconf.redis_thread = _value;
-        else if (keyis("ac_timeout", key))
-                mdsconf.ac_timeout = _value;
-        else if (keyis("main_loop_threads ", key)) {
-                mdsconf.main_loop_threads = _value;
-        }
 
         /**
          * cds configure

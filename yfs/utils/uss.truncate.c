@@ -147,9 +147,23 @@ opt_err:
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = sdfs_lookup_recurive(path, &fid);
-        if (ret)
+        dirid_t parent;
+        char name[MAX_NAME_LEN];
+        ret = sdfs_splitpath(path, &parent, name);
+        if (ret) {
                 GOTO(err_ret, ret);
+        }
+
+        ret = sdfs_create(NULL, &parent, name, &fid, 0777, 0, 0);
+        if (ret) {
+                if (ret == EEXIST) {
+                        ret = sdfs_lookup(NULL, &parent, name, &fid);
+                        if (ret)
+                                GOTO(err_ret, ret);
+                } else {
+                        GOTO(err_ret, ret);
+                }
+        }
 
         ret = sdfs_getattr(NULL, &fid, &stbuf);
         if (ret)

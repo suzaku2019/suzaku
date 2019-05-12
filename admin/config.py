@@ -7,7 +7,7 @@ import os
 from utils import Exp, dmsg, dwarn, derror, exec_pipe, exec_shell, \
         get_value
 
-MAX_NUM = 100 #the max count of cds or mds
+MAX_NUM = 100 #the max count of bactl or mdctl
 
 def _join(p1, p2):
     return os.path.join(p1, p2)
@@ -40,15 +40,14 @@ class Config:
     def __init__(self, home = None, load_config=True):
         self.hostname = socket.gethostname()
         self.home = home
-        self.roles = ["cds", "mond", "redis", "nfs", "ftp"]
+        self.roles = ["bactl", "mdctl", "frctl"]
         if self.home is None:
             self.home = os.path.abspath(os.path.split(os.path.realpath(__file__))[0] + "../../../")
         self.etcd_data_path = os.path.join(self.home, 'data/etcd')
-        self.uss_mond = _join(self.home, "app/sbin/sdfs.mond")
-        self.uss_cds = _join(self.home, "app/sbin/sdfs.cds")
-        self.uss_ynfs = _join(self.home, "app/sbin/sdfs.nfs")
+        self.uss_mdctl = _join(self.home, "app/sbin/sdfs.mdctl")
+        self.uss_bactl = _join(self.home, "app/sbin/sdfs.bactl")
+        self.uss_yfrctl = _join(self.home, "app/sbin/sdfs.frctl")
         self.uss_yiscsi = _join(self.home, "app/sbin/sdfs.iscsi")
-        self.uss_ftp = _join(self.home, "app/sbin/sdfs.ftp")
         self.uss_fuse = _join(self.home, "app/sbin/sdfs.fuse")
         self.uss_fuse3 = _join(self.home, "app/sbin/sdfs.fuse3")
 
@@ -65,7 +64,7 @@ class Config:
         self.uss_objck = _join(self.home, "app/bin/sdfs.objck")
         self.uss_robjck = _join(self.home, "app/bin/sdfs.robjck")
         self.uss_lobjck = _join(self.home, "app/bin/sdfs.lobjck")
-        self.uss_mdstat = _join(self.home, "app/bin/sdfs.mondtat")
+        self.uss_mdstat = _join(self.home, "app/bin/sdfs.mdstat")
         self.uss_stat = _join(self.home, "app/bin/sdfs.stat")
         self.uss_statvfs = _join(self.home, "app/bin/sdfs.statvfs")
         self.uss_write = _join(self.home, "app/bin/sdfs.write")
@@ -83,14 +82,12 @@ class Config:
         self.uss_cleancore = _join(self.home, "app/admin/cleancore.sh")
         self.uss_minio = _join(self.home, "app/admin/minio.py")
         self.uss_vip = _join(self.home, "app/admin/vip.py")
-        self.uss_redisd = _join(self.home, "app/admin/redisd.py")
 
         self.sdfs_mon = _join(self.home, "app/bin/sdfs.mon")
         
         self.max_num = MAX_NUM
         self.cluster_conf = os.path.join(self.home, 'etc/cluster.conf')
         self.uss_conf = os.path.join(self.home, 'etc/sdfs.conf')
-        self.ftp_conf = os.path.join(self.home, 'etc/ftp.conf')
         self.vip_conf = os.path.join(self.home, 'etc/vip.conf')
         self.__check_env()
 
@@ -130,9 +127,6 @@ class Config:
         self.hostname = d['globals.hostname']
         self.home = d['globals.home']
         self.check_mountpoint = int(d['globals.check_mountpoint'])
-        self.redis_sharding = int(d['mdsconf.redis_sharding'])
-        self.redis_replica = int(d['mdsconf.redis_replica'])
-        self.redis_baseport = int(d['mdsconf.redis_baseport'])
         self.nfs_srv = d['globals.nfs_srv']
         self.wmem_max = int(d['globals.wmem_max'])
         self.rmem_max = int(d['globals.rmem_max'])
@@ -141,7 +135,6 @@ class Config:
         self.testing = int(d['globals.testing'])
         self.valgrind = int(d['globals.valgrind'])
         self.solomode = int(d['globals.solomode'])
-        self.redis_dir = os.path.join(self.workdir, "redis")
 
     def __parse_line__(self, line, srv):
         #mds = [x.lstrip("mds.") for x in p.findall(line)]
@@ -160,14 +153,11 @@ class Config:
         #assert(len(hosts) == 1)
 
         #print line
-        redis = self.__parse_line__(line, "redis")
-        mond = self.__parse_line__(line, "mond")
-        cds = self.__parse_line__(line, "cds")
-        nfs = self.__parse_line__(line, "nfs")
-        ftp = self.__parse_line__(line, "ftp")
+        mdctl = self.__parse_line__(line, "mdctl")
+        bactl = self.__parse_line__(line, "bactl")
+        frctl = self.__parse_line__(line, "frctl")
 
-        #print (hosts[0], redis, mond, cds, nfs)
-        return (host, redis, mond, cds, nfs, ftp)
+        return (host, mdctl, bactl, frctl)
 
     def __load_cluster(self):
         conf = os.path.join(self.home, "etc/cluster.conf")
@@ -175,13 +165,14 @@ class Config:
         self.cluster = cluster
 
         if not os.path.isfile(conf):
-            dwarn("not found %s" % (conf))
+            #dwarn("not found %s" % (conf))
             return
 
         with open(conf, "r") as f:
             for line in f.readlines():
-                host, redis, mond, cds, nfs, ftp = self.__parse_line(line)
-                cluster.update({host: {"redis": redis, "mond": mond, "cds": cds, "nfs": nfs, "ftp": ftp}})
+                if (line[-1] == '\n'):
+                    line = line[:-1]
+                cluster.update({line: {"mdctl": ['0'], "bactl": ['0'], "frctl": ['0']}})
         self.cluster = cluster
         #print self.cluster
 
@@ -208,24 +199,7 @@ class Config:
         lines = []
         for h in cluster.keys():
             host = h
-
-            def __dump(h):
-                array = []
-
-                for i in self.roles:
-                    try:
-                        role = "%s[" % (i) + ','.join([str(x) for x in self.cluster[h][i]]) + "]"
-                        array.append(role)
-                    except:
-                        pass
-
-                return array
-                
-            array = __dump(h)
-                
-            services = ' '.join(array)
-            line = "%s %s" % (host, services)
-            lines.append(line)
+            lines.append(host)
         lines = '\n'.join(lines)
 
         with open(conf_tmp, "w") as f:

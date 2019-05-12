@@ -24,14 +24,10 @@
 #include "rpc_table.h"
 #include "configure.h"
 #include "core.h"
-#include "redis_co.h"
-#include "attr_queue.h"
-#if ENABLE_CORENET
 #include "corenet_maping.h"
 #include "corenet_connect.h"
 #include "corenet.h"
 #include "corerpc.h"
-#endif
 #include "aio.h"
 #include "schedule.h"
 #include "bh.h"
@@ -40,23 +36,10 @@
 #include "variable.h"
 #include "ylib.h"
 #include "adt.h"
-#include "dbg.h"
 #include "mem_pool.h"
+#include "dbg.h"
 
 #define CORE_MAX 256
-
-typedef struct {
-        struct list_head hook;
-        sockid_t sockid;
-        buffer_t buf;
-} core_fwd_t;
-
-typedef struct {
-        struct list_head hook;
-        char name[MAX_NAME_LEN];
-        func1_t func;
-        void *opaque;
-} core_check_t;
 
 typedef struct {
         task_t task;
@@ -67,67 +50,28 @@ typedef struct {
         int retval;
 } arg1_t;
 
-#if 1
 typedef struct {
-        time_t last_update;
-        uint64_t used;
-        uint64_t count;
-} core_latency_t;
+        task_t task;
+        sem_t sem;
+        func_t exec;
+        void *ctx;
+        int type;
+} arg_t;
 
-typedef struct {
-        struct list_head hook;
-        uint64_t used;
-        uint64_t count;
-} core_latency_update_t;
-
-typedef struct {
-        sy_spinlock_t lock;
-        struct list_head list;
-        uint64_t count;
-        uint64_t used;
-        double last_result;
-} core_latency_list_t;
-
-static __thread core_latency_t *core_latency = NULL;
-static core_latency_list_t *core_latency_list;
-
-static int __core_latency_init();
-static int __core_latency_private_init();
-#if ENABLE_CORE_PIPELINE
-static void  __core_pipeline_forward();
-static int __core_pipeline_create();
-#endif
-#endif
-
-static core_t *__core_array__[256];
-
-extern __thread struct list_head private_iser_dev_list;
-
-core_t *core_self()
-{
-        return variable_get(VARIABLE_CORE);
-}
-
-#if ENABLE_CORENET
-static void __core_interrupt_eventfd_func(void *arg)
-{
-        int ret;
-        char buf[MAX_BUF_LEN];
-
-        (void) arg;
-
-        ret = read(core_self()->interrupt_eventfd, buf, MAX_BUF_LEN);
-        if (ret < 0) {
-                ret = errno;
-                UNIMPLEMENTED(__DUMP__);
-        }
-}
-#endif
+#define REQUEST_SEM 1
+#define REQUEST_TASK 2
 
 #define CORE_CHECK_KEEPALIVE_INTERVAL 1
 #define CORE_CHECK_CALLBACK_INTERVAL 5
 #define CORE_CHECK_HEALTH_INTERVAL 30
 #define CORE_CHECK_HEALTH_TIMEOUT 180
+
+static core_t *__core_array__[256];
+
+core_t *core_self()
+{
+        return variable_get(VARIABLE_CORE);
+}
 
 STATIC void *__core_check_health__(void *_arg)
 {
@@ -151,7 +95,7 @@ STATIC void *__core_check_health__(void *_arg)
 
                         if (unlikely(now - core->keepalive > CORE_CHECK_HEALTH_TIMEOUT)) {
                                 sy_spin_unlock(&core->keepalive_lock);
-                                DERROR("polling core[%d] block !!!!!\n", core->idx);
+                                DERROR("polling core[%d] block !!!!!\n", core->hash);
                                 YASSERT(0);
                                 EXIT(EAGAIN);
                         }
@@ -173,27 +117,9 @@ static void __core_check_keepalive(core_t *core, time_t now)
         if (unlikely(ret))
                 return;
 
-        core->keepalive  = now;
+        core->keepalive = now;
 
         sy_spin_unlock(&core->keepalive_lock);
-}
-
-static void __core_check_callback(core_t *core, time_t now)
-{
-        struct list_head *pos;
-        core_check_t *core_check;
-
-        if (now - core->last_check < CORE_CHECK_CALLBACK_INTERVAL) {
-                return;
-        }
-
-        core->last_check  = now;
-
-        list_for_each(pos, &core->check_list) {
-                core_check = (void *)pos;
-
-                core_check->func(core_check->opaque, core_check->name);
-        }
 }
 
 static void __core_check(core_t *core)
@@ -203,53 +129,26 @@ static void __core_check(core_t *core)
         now = gettime();
 
         __core_check_keepalive(core, now);
-        __core_check_callback(core, now);
 }
 
 static inline void IO_FUNC __core_worker_run(core_t *core, void *ctx)
 {
-#if ENABLE_CORENET
-        int tmo = core->main_core ? 0 : 1;
-        corenet_tcp_poll(ctx, tmo);
-#endif
-        if (core->flag & CORE_FLAG_AIO) {
-                aio_polling();
-        }
+        struct list_head *pos;
+        routine_t *routine;
         
+        list_for_each(pos, &core->poller_list) {
+                routine = (void *)pos;
+                routine->func(core, ctx, routine->ctx);
+        }
+
         schedule_run(core->schedule);
 
-#if ENABLE_ATTR_QUEUE
-        attr_queue_run(ctx);
-#endif
-        
-#if ENABLE_CORE_PIPELINE
-        __core_pipeline_forward();
-#endif
-        
-#if ENABLE_CORENET
-        corenet_tcp_commit(ctx);
-        schedule_run(core->schedule);
-#endif
-
-#if ENABLE_COREAIO
-        if (core->flag & CORE_FLAG_AIO) {
-                aio_submit();
+        list_for_each(pos, &core->routine_list) {
+                routine = (void *)pos;
+                routine->func(core, ctx, routine->ctx);
         }
-#endif
 
-#if ENABLE_CORERPC
-        corerpc_scan(ctx);
-#endif
-
-        redis_co_run(ctx);
-        
         schedule_scan(core->schedule);
-
-#if ENABLE_CORENET
-        if (!gloconf.rdma || sanconf.tcp_discovery) {
-                corenet_tcp_check();
-        }
-#endif
 
         __core_check(core);
 
@@ -263,7 +162,12 @@ static int __core_worker_init(core_t *core)
         int ret;
         char name[MAX_NAME_LEN];
 
-        DINFO("core[%u] init begin, polling %s\n", core->hash, core->flag & CORE_FLAG_POLLING ? "on" : "off");
+        DINFO("core[%u] init begin, polling %s\n", core->hash,
+              core->flag & CORE_FLAG_POLLING ? "on" : "off");
+
+        INIT_LIST_HEAD(&core->poller_list);
+        INIT_LIST_HEAD(&core->routine_list);
+        INIT_LIST_HEAD(&core->destroy_list);
 
         if (ng.daemon && core->flag & CORE_FLAG_POLLING) {
                 cpuset_getcpu(&core->main_core, &core->aio_core);
@@ -283,8 +187,8 @@ static int __core_worker_init(core_t *core)
         } else {
                 core->main_core = NULL;
         }
-        
-#if ENABLE_CORENET
+
+        core->interrupt_eventfd = -1;
         int *interrupt = !core->main_core ? &core->interrupt_eventfd : NULL;
 
         snprintf(name, sizeof(name), core->name);
@@ -292,29 +196,6 @@ static int __core_worker_init(core_t *core)
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
         }
-
-        ret = corenet_tcp_init(32768, (corenet_tcp_t **)&core->tcp_net);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        if (interrupt) {
-                sockid_t sockid;
-                sockid.sd = core->interrupt_eventfd;
-                sockid.seq = _random();
-                sockid.type = SOCKID_CORENET;
-                sockid.addr = 123;
-                ret = corenet_tcp_add(core->tcp_net, &sockid, NULL, NULL, NULL, NULL,
-                                      __core_interrupt_eventfd_func, "interrupt_fd");
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-        }
-#else 
-        snprintf(name, sizeof(name), core->name);
-        ret = schedule_create(NULL, name, &core->idx, &core->schedule, NULL);
-        if (unlikely(ret)) {
-                GOTO(err_ret, ret);
-        }
-#endif
 
         DINFO("%s[%u] schedule inited\n", core->name, core->hash);
 
@@ -328,25 +209,6 @@ static int __core_worker_init(core_t *core)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-#if ENABLE_CO_WORKER
-        if (core->flag & CORE_FLAG_PRIVATE) {
-                ret = mem_cache_private_init();
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-
-                ret = mem_hugepage_private_init();
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-        
-                DINFO("%s[%u] mem inited\n", core->name, core->hash);
-
-                snprintf(name, sizeof(name), "%s[%u]", core->name, core->idx);
-                ret = analysis_private_create(name);
-                if (unlikely(ret)) {
-                        GOTO(err_ret, ret);
-                }
-        }
-#else
         ret = mem_cache_private_init();
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -357,14 +219,13 @@ static int __core_worker_init(core_t *core)
         
         DINFO("%s[%u] mem inited\n", core->name, core->hash);
 
-        snprintf(name, sizeof(name), "%s[%u]", core->idx);
+        snprintf(name, sizeof(name), "%s[%u]", core->name, core->hash);
         ret = analysis_private_create(name);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
         }
 
         DINFO("%s[%u] analysis inited\n", core->name, core->hash);
-#endif
 
 #if 0
         ret = fastrandom_private_init();
@@ -375,73 +236,9 @@ static int __core_worker_init(core_t *core)
         DINFO("%s[%u] fastrandom inited\n", core->name, core->hash);
 #endif
 
-#if ENABLE_CORERPC
-        ret = corerpc_init(name, core);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        DINFO("%s[%u] rpc inited\n", core->name, core->hash);
-
-        if (core->flag & CORE_FLAG_ACTIVE) {
-                corenet_maping_t *maping;
-                ret = corenet_maping_init(&maping);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-
-                YASSERT(maping);
-
-                DINFO("%s[%u] maping inited\n", core->name, core->hash);
-
-                core->maping = maping;
-        } else {
-                core->maping = NULL;
-        }
-#endif
-
-#if 1
-        ret = __core_latency_private_init();
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-#endif
-
-        DINFO("%s[%u] latency inited\n", core->name, core->hash);
-
-#if ENABLE_COREAIO
-        if (core->flag & CORE_FLAG_AIO) {
-                snprintf(name, sizeof(name), "%s[%u]", core->name, core->hash);
-
-                ret = aio_create(name, core->aio_core, core->flag & CORE_FLAG_POLLING);
-                //ret = aio_create(name, core->aio_core, 0);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-                
-                DINFO("%s[%u] aio inited\n", core->name, core->hash);
-        }
-#endif
-
-#if ENABLE_REDIS_CO
-        if (core->flag & CORE_FLAG_REDIS) {
-                ret = redis_co_init(core->flag & CORE_FLAG_POLLING);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-        }
-#endif
-
-#if ENABLE_ATTR_QUEUE
-        ret = attr_queue_init();
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-#endif
-        
         variable_set(VARIABLE_CORE, core);
         //core_register_tls(VARIABLE_CORE, private_mem);
 
-#if ENABLE_CORE_PIPELINE
-        ret = __core_pipeline_create();
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-#endif
-        
         sem_post(&core->sem);
 
         return 0;
@@ -454,8 +251,7 @@ static void * IO_FUNC __core_worker(void *_args)
         int ret;
         core_t *core = _args;
 
-        DINFO("start %s idx %d\n",
-              core->name, core->idx);
+        DINFO("start %s idx %d\n", core->name, core->hash);
 
         ret = __core_worker_init(core);
         if (unlikely(ret))
@@ -472,18 +268,7 @@ static void * IO_FUNC __core_worker(void *_args)
         return NULL;
 }
 
-typedef struct {
-        task_t task;
-        sem_t sem;
-        func_t exec;
-        void *ctx;
-        int type;
-} arg_t;
-
-#define REQUEST_SEM 1
-#define REQUEST_TASK 2
-
-int core_create(core_t **_core, const char *name, int hash, int flag)
+static int __core_create(core_t **_core, const char *name, int hash, int flag)
 {
         int ret;
         core_t *core;
@@ -499,8 +284,6 @@ int core_create(core_t **_core, const char *name, int hash, int flag)
         core->hash = hash;
         core->flag = flag;
         core->keepalive = gettime();
-
-        INIT_LIST_HEAD(&core->check_list);
 
         ret = sy_spin_init(&core->keepalive_lock);
         if (unlikely(ret))
@@ -533,8 +316,8 @@ int core_init(int polling_core, int flag)
         ret = cpuset_init(polling_core);
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
-        
-        DINFO("core init begin\n");
+
+        DINFO("core init begin %u %u\n", polling_core, cpuset_useable());
         YASSERT(cpuset_useable() > 0 && cpuset_useable() < 64);
 
 #if 0
@@ -544,22 +327,14 @@ int core_init(int polling_core, int flag)
 #endif
 
         DINFO("core global private mem inited\n");
-
-#if 1
-        ret = __core_latency_init();
-        if (unlikely(ret))
-                UNIMPLEMENTED(__DUMP__);
-#endif
-
-        DINFO("core global latency inited\n");
         for (i = 0; i < cpuset_useable(); i++) {
-                ret = core_create(&core, "core", i, flag);
+                ret = __core_create(&core, "core", i, flag);
                 if (unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
 
                 __core_array__[i] = core;
 
-                DINFO("core %d hash %d idx %d\n",
+                DINFO("core[%d] hash %d idx %d\n",
                       i, core->hash, core->idx);
         }
 
@@ -571,52 +346,54 @@ int core_init(int polling_core, int flag)
                 }
         }
 
-#if ENABLE_CORERPC
-        if (flag & CORE_FLAG_PASSIVE) {
-                ret = corenet_tcp_passive();
-                if (unlikely(ret))
-                        UNIMPLEMENTED(__DUMP__);
-
-#if ENABLE_RDMA
-                if (gloconf.rdma) {
-                        ret = corenet_rdma_passive();
-                        if (unlikely(ret))
-                                UNIMPLEMENTED(__DUMP__);
-                }
-#endif
-        }
-#endif
-
         ret = sy_thread_create2(__core_check_health__, NULL, "core_check_health");
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
 
-        //DINFO("flag %d cpuset_useable %d\n", flag, cpuset_useable());
+        ret = corenet_init();
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
 
+        if (flag & CORE_FLAG_AIO) {
+                ret = aio_create();
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+        }
+
+        ret = corerpc_init();
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = corenet_maping_init();
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = core_latency_init();
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
         return 0;
+err_ret:
+        return ret;
 }
 
 int core_hash(const fileid_t *fileid)
 {
-        return fileid->id % cpuset_useable();
+        return (fileid->id + fileid->idx) % cpuset_useable();
 }
 
-#if ENABLE_CORENET
 int core_attach(int hash, const sockid_t *sockid, const char *name,
                 void *ctx, core_exec func, func_t reset, func_t check)
 {
         int ret;
         core_t *core;
-        corenet_tcp_t *corenet;
 
         DINFO("attach hash %d fd %d name %s\n", hash, sockid->sd, name);
 
         core = __core_array__[hash % cpuset_useable()];
         YASSERT(core);
 
-        corenet = core->tcp_net;
-        //ctx->nid->id = 0;
-        ret = corenet_tcp_add(corenet, sockid, ctx, func, reset, check, NULL, name);
+        ret = corenet_attach(core->corenet, sockid, ctx, func, reset, check, NULL, name);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -626,14 +403,13 @@ int core_attach(int hash, const sockid_t *sockid, const char *name,
 err_ret:
         return ret;
 }
-#endif
 
 core_t *core_get(int hash)
 {
         return __core_array__[hash % cpuset_useable()];
 }
 
-static void __core_request(void *_ctx)
+static void __core_request__(void *_ctx)
 {
         arg1_t *ctx = _ctx;
 
@@ -646,7 +422,7 @@ static void __core_request(void *_ctx)
         }
 }
 
-int core_request(int hash, int priority, const char *name, func_va_t exec, ...)
+int core_request_va(int hash, int priority, const char *name, func_va_t exec, va_list ap)
 {
         int ret;
         core_t *core;
@@ -666,7 +442,7 @@ int core_request(int hash, int priority, const char *name, func_va_t exec, ...)
         }
 
         ctx.exec = exec;
-        va_start(ctx.ap, exec);
+        va_copy(ctx.ap, ap);
 
         if (schedule_running()) {
                 ctx.type = REQUEST_TASK;
@@ -678,7 +454,7 @@ int core_request(int hash, int priority, const char *name, func_va_t exec, ...)
                         UNIMPLEMENTED(__DUMP__);
         }
 
-        ret = schedule_request(schedule, priority, __core_request, &ctx, name);
+        ret = schedule_request(schedule, priority, __core_request__, &ctx, name);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -697,6 +473,15 @@ int core_request(int hash, int priority, const char *name, func_va_t exec, ...)
         return ctx.retval;
 err_ret:
         return ret;
+}
+
+int core_request(int hash, int priority, const char *name, func_va_t exec, ...)
+{
+        va_list ap;
+
+        va_start(ap, exec);
+
+        return core_request_va(hash, priority, name, exec, ap);
 }
 
 int core_request_new(core_t *core, int priority, const char *name, func_va_t exec, ...)
@@ -724,7 +509,7 @@ int core_request_new(core_t *core, int priority, const char *name, func_va_t exe
                         UNIMPLEMENTED(__DUMP__);
         }
 
-        ret = schedule_request(schedule, priority, __core_request, &ctx, name);
+        ret = schedule_request(schedule, priority, __core_request__, &ctx, name);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -743,48 +528,6 @@ int core_request_new(core_t *core, int priority, const char *name, func_va_t exe
         return ctx.retval;
 err_ret:
         return ret;
-}
-
-void core_check_register(core_t *core, const char *name, void *opaque, func1_t func)
-{
-        int ret;
-        core_check_t *core_check;
-
-        YASSERT(strlen(name) < MAX_NAME_LEN);
-
-        ret = ymalloc((void **)&core_check, sizeof(*core_check));
-        if (unlikely(ret))
-                UNIMPLEMENTED(__DUMP__);
-
-	DINFO("%s register core check %p\n", name, opaque);
-        core_check->func = func;
-        core_check->opaque = opaque;
-        strcpy(core_check->name, name);
-        list_add_tail(&core_check->hook, &core->check_list);
-}
-
-void core_check_dereg(const char *name, void *opaque)
-{
-	core_t  *core = core_self();
-	struct list_head *pos, *n;
-	core_check_t *core_check;
-	int found = 0;
-
-	list_for_each_safe(pos, n, &core->check_list) {
-		core_check = list_entry(pos, core_check_t, hook);
-
-		if (core_check->opaque == opaque) {
-			DWARN("deregister %s corecheck %p name len %lu\n", name, opaque, strlen(name));
-			YASSERT(memcmp(core_check->name, name, strlen(name)) == 0);
-			list_del(&core_check->hook);
-			found = 1;
-			yfree((void **)&core_check);
-			break;
-		}
-	}
-
-	if (found == 0)
-		YASSERT(0);
 }
 
 void core_register_tls(int type, void *ptr)
@@ -808,237 +551,7 @@ void core_iterator(func1_t func, const void *opaque)
         }
 }
 
-#if 1
-static int __core_latency_private_init()
-{
-        int ret;
-
-        YASSERT(core_latency == NULL);
-        ret = ymalloc((void **)&core_latency, sizeof(*core_latency));
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        memset(core_latency, 0x0, sizeof(*core_latency));
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-static void __core_latency_private_destroy()
-{
-        YASSERT(core_latency);
-        yfree((void **)&core_latency);
-}
-
-static int __core_latency_worker__()
-{
-        int ret;
-        struct list_head list, *pos, *n;
-        core_latency_update_t *core_latency_update;
-        char path[MAX_PATH_LEN], buf[MAX_BUF_LEN];
-        double latency;
-
-        INIT_LIST_HEAD(&list);
-
-        ret = sy_spin_lock(&core_latency_list->lock);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        list_splice_init(&core_latency_list->list, &list);
-
-        sy_spin_unlock(&core_latency_list->lock);
-
-        list_for_each_safe(pos, n, &list) {
-                list_del(pos);
-                core_latency_update = (void *)pos;
-                core_latency_list->used += core_latency_update->used;
-                core_latency_list->count += core_latency_update->count;
-                yfree((void **)&pos);
-        }
-
-        if (core_latency_list->count) {
-                core_latency_list->last_result
-                        = ((double)(core_latency_list->used + core_latency_list->last_result)
-                           / (core_latency_list->count + 1));
-        } else
-                core_latency_list->last_result /= 2;
-
-        latency = core_latency_list->last_result / (1000);
-        core_latency_list->used = 0;
-        core_latency_list->count = 0;
-
-        snprintf(path, MAX_PATH_LEN, "latency/10");
-        snprintf(buf, MAX_PATH_LEN, "%fms\n", latency);
-        //DINFO("latency %s", buf);
-
-        DBUG("latency %llu\n", (LLU)core_latency_list->last_result);
-
-        nodectl_set(path, buf);
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-static void *__core_latency_worker(void *arg)
-{
-        int ret;
-
-        (void) arg;
-
-        while (1) {
-                sleep(4);
-
-                ret = __core_latency_worker__();
-                if (unlikely(ret))
-                        UNIMPLEMENTED(__DUMP__);
-        }
-
-        return NULL;
-}
-
-static int __core_latency_init()
-{
-        int ret;
-
-        YASSERT(core_latency_list == NULL);
-        ret = ymalloc((void **)&core_latency_list, sizeof(*core_latency_list));
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-
-        INIT_LIST_HEAD(&core_latency_list->list);
-
-        ret = sy_spin_init(&core_latency_list->lock);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        ret = sy_thread_create2(__core_latency_worker, NULL, "__core_latency_worker");
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-static int __core_latency_update()
-{
-        int ret;
-        time_t now = gettime();
-        core_latency_update_t *core_latency_update;
-        core_t *core;
-
-        if (now - core_latency->last_update < 2) {
-                return 0;
-        }
-
-        core = core_self();
-        DBUG("%s update latency\n", core->name);
-
-        ret = ymalloc((void **)&core_latency_update, sizeof(*core_latency_update));
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        core_latency_update->used = core_latency->used;
-        core_latency_update->count = core_latency->count;
-        core_latency->used = core_latency->used / core_latency->count;
-        core_latency->count = 1;
-        core_latency->last_update = now;
-
-        ret = sy_spin_lock(&core_latency_list->lock);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        list_add_tail(&core_latency_update->hook, &core_latency_list->list);
-
-        sy_spin_unlock(&core_latency_list->lock);
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-void core_latency_update(uint64_t used)
-{
-        if (core_latency == NULL) {
-                return;
-        }
-
-        core_latency->used += used;
-        core_latency->count++;
-
-        DBUG("latency %llu / %llu\n", (LLU)core_latency->used, (LLU)core_latency->count);
-        __core_latency_update();
-}
-
-uint64_t IO_FUNC core_latency_get()
-{
-        if (core_latency && core_latency->count) {
-                DBUG("latency %llu / %llu\n", (LLU)core_latency->used, (LLU)core_latency->count);
-                return core_latency->used / core_latency->count;
-        } else if (core_latency_list) {
-                DBUG("latency %llu\n", (LLU)core_latency_list->last_result);
-                return core_latency_list->last_result;
-        } else
-                return 0;
-}
-
-#endif
-
-typedef struct {
-        func_t init;
-        void *ctx;
-        sem_t sem;
-} arg2_t;
-
-static void __core_init_attach(void *_ctx)
-{
-        arg2_t *ctx = _ctx;
-
-        ctx->init(ctx->ctx);
-
-        sem_post(&ctx->sem);
-}
-
-int core_init_register(func_t init, void *_ctx, const char *name)
-{
-        int ret, i, count;
-        arg2_t ctx;
-        core_t *core;
-
-        YASSERT(!schedule_running());
-
-        ctx.init = init;
-        ctx.ctx = _ctx;
-        ret = sem_init(&ctx.sem, 0, 0);
-        if (unlikely(ret))
-                UNIMPLEMENTED(__DUMP__);
-
-        count = cpuset_useable();
-        for (i = 0; i < count; i++) {
-                core = __core_array__[i];
-
-                ret = schedule_request(core->schedule, -1, __core_init_attach, &ctx, name);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-        }
-
-        for (i = 0; i < count; i++) {
-                ret = _sem_wait(&ctx.sem);
-                if (unlikely(ret)) {
-                        GOTO(err_ret, ret);
-                }
-        }
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-
-void __core_dump_memory(void *_core, void *_arg)
+static void __core_dump_memory(void *_core, void *_arg)
 {
         core_t *core = _core;
         uint64_t *memory = _arg;
@@ -1063,165 +576,76 @@ int core_dump_memory(uint64_t *memory)
         return 0;
 }
 
-#if 0
-int core_poller_register(core_t *core, const char *name, void (*poll)(void *,void*), void *user_data)
-{
-        sub_poller_t *poller;
 
-        int ret = huge_malloc((void **)&poller, sizeof(sub_poller_t));
+static int __core_register(struct list_head *list, const char *name, func2_t func, void *ctx)
+{
+        int ret;
+        routine_t *routine;
+
+        ret = huge_malloc((void **)&routine, sizeof(*routine));
         if(ret)
-                return ret;
-
-        strncpy(poller->name, name, 64);
-        poller->poll = poll;
-        poller->user_data = user_data;
-        list_add_tail(&poller->list_entry, &core->poller_list);
-
-        DINFO("register sub poller, core:%d, ptr=%p, name: %s\r\n", core->idx, poller, poller->name);
-        
-        return 0;
-}
-
-int core_poller_unregister(core_t *core, void (*poll)(void *,void*))
-{
-        sub_poller_t *entry;
-        sub_poller_t *n;
-
-        /*all sub-poller should be registered in the list.*/
-	list_for_each_entry_safe(entry, n, &core->poller_list, list_entry) {
-                if(entry->poll == poll) {
-                        DINFO("unregister sub poller, ptr=%p, name: %s\r\n", entry, entry->name);
-                        list_del(&entry->list_entry);
-                        huge_free((void **)&entry);
-                }
-        }
-        
-        return 0;
-}
-#endif 
-
-#if ENABLE_CORE_PIPELINE
-typedef struct __vm {
-        /*forward*/
-        struct list_head forward_list;
-        /*aio cb*/
-        //aio_context_t  ioctx;
-        int iocb_count;
-        struct iocb *iocb[TASK_MAX];
-} vm_t;
-
-typedef struct {
-        struct list_head hook;
-        sockid_t sockid;
-        buffer_t buf;
-} vm_fwd_t;
-
-static __thread vm_t *__vm__ = NULL;
-
-int core_pipeline_send(const sockid_t *sockid, buffer_t *buf, int flag)
-{
-        int ret, found = 0;
-        vm_fwd_t *vm_fwd;
-        struct list_head *pos;
-
-        if (__vm__ == NULL) {
-                ret = ENOSYS;
-                goto err_ret;
-        }
-
-#if 1
-        ret = sdevent_check(sockid);
-        if (unlikely(ret)) {
-                DWARN("append forward to %s fail\n",
-                      _inet_ntoa(sockid->addr));
                 GOTO(err_ret, ret);
-        }
-#endif
 
-        YASSERT(flag == 0);
-
-        DBUG("core_pipeline_send\n");
-
-        list_for_each(pos, &__vm__->forward_list) {
-                vm_fwd = (void *)pos;
-
-                if (sockid_cmp(sockid, &vm_fwd->sockid) == 0) {
-                        DBUG("append forward to %s @ %u\n",
-                             _inet_ntoa(sockid->addr), sockid->sd);
-                        mbuffer_merge(&vm_fwd->buf, buf);
-                        found = 1;
-                        break;
-                }
-        }
-
-        if (found == 0) {
-                DBUG("new forward to %s @ %u\n",
-                      _inet_ntoa(sockid->addr), sockid->sd);
-
-#ifdef HAVE_STATIC_ASSERT
-                static_assert(sizeof(*vm_fwd)  < sizeof(mem_cache128_t), "vm_fwd_t");
-#endif
-
-                vm_fwd = mem_cache_calloc(MEM_CACHE_128, 0);
-                YASSERT(vm_fwd);
-                vm_fwd->sockid = *sockid;
-                mbuffer_init(&vm_fwd->buf, 0);
-                mbuffer_merge(&vm_fwd->buf, buf);
-                list_add_tail(&vm_fwd->hook, &__vm__->forward_list);
-        }
+        strncpy(routine->name, name, 64);
+        routine->func = func;
+        routine->ctx = ctx;
+        list_add_tail(&routine->hook, list);
 
         return 0;
 err_ret:
         return ret;
 }
 
-static void  __core_pipeline_forward()
+int core_register_poller(const char *name, func2_t func, void *ctx)
 {
         int ret;
-        net_handle_t nh;
-        struct list_head *pos, *n;
-        vm_fwd_t *vm_fwd;
+        core_t *core = core_self();
 
-        YASSERT(__vm__);
-        list_for_each_safe(pos, n, &__vm__->forward_list) {
-                vm_fwd = (void *)pos;
-                list_del(pos);
-
-                DBUG("forward to %s @ %u\n",
-                     _inet_ntoa(vm_fwd->sockid.addr), vm_fwd->sockid.sd);
-
-                sock2nh(&nh, &vm_fwd->sockid);
-                ret = sdevent_queue(&nh, &vm_fwd->buf, 0);
-                if (unlikely(ret)) {
-                        DWARN("forward to %s @ %u fail\n",
-                              _inet_ntoa(vm_fwd->sockid.addr), vm_fwd->sockid.sd);
-                        mbuffer_free(&vm_fwd->buf);
-                }
-
-                mem_cache_free(MEM_CACHE_128, vm_fwd);
-        }
-}
-
-static int __core_pipeline_create()
-{
-        int ret;
-        vm_t *vm;
-
-        ret = ymalloc((void **)&vm, sizeof(*vm));
-        if (unlikely(ret))
+        ret = __core_register(&core->poller_list, name, func, ctx);
+        if(ret)
                 GOTO(err_ret, ret);
 
-        memset(vm, 0x0, sizeof(*vm));
-
-        INIT_LIST_HEAD(&vm->forward_list);
-
-        __vm__ = vm;
-
+        DINFO("register poller[%d], name: %s\r\n",
+              core->hash, name);
+        
         return 0;
 err_ret:
         return ret;
 }
-#endif
+
+int core_register_routine(const char *name, func2_t func, void *ctx)
+{
+        int ret;
+        core_t *core = core_self();
+
+        ret = __core_register(&core->routine_list, name, func, ctx);
+        if(ret)
+                GOTO(err_ret, ret);
+
+        DINFO("register routine[%d], name: %s\r\n",
+              core->hash, name);
+        
+        return 0;
+err_ret:
+        return ret;
+}
+
+int core_register_destroy(const char *name, func2_t func, void *ctx)
+{
+        int ret;
+        core_t *core = core_self();
+
+        ret = __core_register(&core->destroy_list, name, func, ctx);
+        if(ret)
+                GOTO(err_ret, ret);
+
+        DINFO("register destroy[%d], name: %s\r\n",
+              core->hash, name);
+        
+        return 0;
+err_ret:
+        return ret;
+}
 
 int core_request_async(int hash, int priority, const char *name, func_t exec, void *arg)
 {
@@ -1250,52 +674,25 @@ err_ret:
         return ret;
 }
 
-#if 1
 int core_worker_exit(core_t *core)
 {
-        int ret;
-        
         DINFO("%s[%u] destroy begin\n", core->name, core->hash);
 
-#if ENABLE_ATTR_QUEUE
-        ret = attr_queue_destroy();
-        if (ret)
-                GOTO(err_ret, ret);
-#endif
+        struct list_head *pos;
+        routine_t *routine;
+        void *ctx = variable_get_ctx();
+        YASSERT(ctx);
         
-        corenet_tcp_destroy(&core->tcp_net);
+        list_for_each(pos, &core->destroy_list) {
+                routine = (void *)pos;
+                routine->func(core, ctx, routine->ctx);
+        }
+        
         gettime_private_destroy();
 
-#if ENABLE_COREAIO
-        if (core->flag & CORE_FLAG_AIO) {
-                aio_destroy();
-        }
-#endif
-
-        if (core->flag & CORE_FLAG_REDIS) {
-                ret = redis_co_destroy();
-                if (ret)
-                        GOTO(err_ret, ret);
-        }
-        
         if (core->main_core) {
                 cpuset_unset(core->main_core->cpu_id);
         }
-        
-
-#if ENABLE_CORERPC
-        corerpc_destroy((void *)&core->rpc_table);
-
-        if (core->flag & CORE_FLAG_ACTIVE) {
-                corenet_maping_destroy((corenet_maping_t **)&core->maping);
-        }
-#endif
-
-        __core_latency_private_destroy();
-
-#if ENABLE_CORE_PIPELINE
-        UNIMPLEMENTED(__DUMP__);
-#endif
 
         variable_unset(VARIABLE_CORE);
 
@@ -1310,7 +707,62 @@ int core_worker_exit(core_t *core)
         schedule_destroy(core->schedule);
 
         return 0;
+}
+
+int core_islocal(const coreid_t *coreid)
+{
+        core_t *core;
+
+        if (!net_islocal(&coreid->nid)) {
+                DBUG("nid %u\n", coreid->nid.id);
+                return 0;
+        }
+
+        core = core_self();
+        
+        if (unlikely(core == NULL))
+                return 0;
+
+        if (core->hash != (int)coreid->idx) {
+                DBUG("idx %u %u\n", core->hash, coreid->idx);
+                return 0;
+        }
+
+        return 1;
+}
+
+int core_getid(coreid_t *coreid)
+{
+        int ret;
+        core_t *core = core_self();
+        
+        if (unlikely(core == NULL)) {
+                ret = ENOSYS;
+                GOTO(err_ret, ret);
+        }
+
+        coreid->nid = *net_getnid();
+        coreid->idx = core->hash;
+
+        return 0;
 err_ret:
         return ret;
 }
-#endif
+
+int core_init_modules(const char *name, func_va_t exec, ...)
+{
+        int ret;
+        va_list ap;
+
+        va_start(ap, exec);
+
+        for (int i = 0; i < cpuset_useable(); i++) {
+                ret = core_request_va(i, -1, name, exec, ap);
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
+
+        return 0;
+err_ret:
+        return ret;
+}

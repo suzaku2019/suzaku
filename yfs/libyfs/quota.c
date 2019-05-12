@@ -33,7 +33,7 @@ void volid2lvmid(uint64_t volid, fileid_t *dirid)
 {
         dirid->id = volid;
         dirid->idx = 0;
-        dirid->volid = volid;
+        dirid->poolid = volid;
 }
 
 //owner list for client update quota info from mds
@@ -377,7 +377,7 @@ int quota_inode_check_and_inc(const fileid_t *quotaid,
         fileid_t lvmid;
         quota_t dir_quota, group_quota, user_quota;
 
-        volid2lvmid(fileid->volid, &lvmid);
+        volid2lvmid(fileid->poolid, &lvmid);
 
         memset(&dir_quota, 0, sizeof(quota_t));
         memset(&group_quota, 0, sizeof(quota_t));
@@ -632,7 +632,7 @@ int quota_space_check_and_inc(const fileid_t *quotaid,
         fileid_t lvmid;
         quota_t dir_quota, group_quota, user_quota;
 
-        volid2lvmid(fileid->volid, &lvmid);
+        volid2lvmid(fileid->poolid, &lvmid);
 
         memset(&dir_quota, 0, sizeof(quota_t));
         memset(&group_quota, 0, sizeof(quota_t));
@@ -858,7 +858,7 @@ int quota_inode_dec(const fileid_t *quotaid,
         int ret = 0;
         fileid_t lvmid;
 
-        volid2lvmid(fileid->volid, &lvmid);
+        volid2lvmid(fileid->poolid, &lvmid);
 
         ret = __decrease_inode_for_directory_qutoa(quotaid);
         if(ret)
@@ -972,7 +972,7 @@ int quota_space_dec(const fileid_t *quotaid,
         int ret = 0;
         fileid_t lvmid;
 
-        volid2lvmid(fileid->volid, &lvmid);
+        volid2lvmid(fileid->poolid, &lvmid);
 
         ret = __decrease_space_for_directory_quota(quotaid, space);
         if(ret)
@@ -1097,7 +1097,7 @@ void quota_removeall(const fileid_t *dirid, const fileid_t *quotaid)
         int is_lvm = 0;
         quota_t quota;
 
-        if(dirid->id == dirid->volid) {
+        if(dirid->id == dirid->poolid) {
                 is_lvm = 1;
         }
 

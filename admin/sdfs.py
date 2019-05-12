@@ -25,6 +25,7 @@ def usage():
            "    cluster\n"
            "    node\n"
            "file system ops:\n"
+           "    mkpool\n"
            "    mkdir\n"
            "    ls\n"
            "    touch\n"
@@ -41,15 +42,14 @@ def usage():
            "admin ops:\n"
            "    user\n"
            "    group\n"
-           "    worm\n"
-           "    share\n"
+           "    disk\n"
            "    health\n"
            "    mon\n"
            )
 
 
 def is_c_type(cmd):
-    lst = ['mkdir', 'ls', 'touch', 'stat', 'attr', 'cat', 'chmod',
+    lst = ['mkpool', 'mkdir', 'ls', 'touch', 'stat', 'attr', 'cat', 'chmod',
            'chown', 'ln', 'mv', 'rmdir', 'truncate', 'write'
            'user', 'group', 'worm', 'share', 'health']
     if cmd in lst:
@@ -65,7 +65,7 @@ def run_c_type(cmd, argv):
     #exec_pipe(array, 0, False, 0)
 
 def is_python_type(cmd):
-    lst = ['cluster', 'node', 'mon']
+    lst = ['cluster', 'node', 'mon', 'disk']
     if cmd in lst:
         return True
     else:

@@ -27,10 +27,11 @@ static inline int fid2key(const fileid_t *fid, char *key)
 static inline int id2key(const char *prefix, const fileid_t *fid, char *key)
 {
         YASSERT(fid->type);
-        sprintf(key, "%s:%llu/%llu", prefix, (LLU)fid->volid, (LLU)fid->id);
+        sprintf(key, "%s:%llu/%llu", prefix, (LLU)fid->poolid, (LLU)fid->id);
         return 0;
 }
 
+#if 0
 extern int kdel(const volid_t *volid, const fileid_t *fid);
 extern int kset(const volid_t *volid, const fileid_t *fid, const void *buf, size_t size, int flag);
 extern int kget(const volid_t *volid, const fileid_t *fid, void *buf, size_t *size);
@@ -50,5 +51,6 @@ extern int hdel(const volid_t *volid, const fileid_t *fid, const char *name);
 extern int hlen(const volid_t *volid, const fileid_t *fid, uint64_t *count);
 extern redisReply *hscan(const volid_t *volid, const fileid_t *fid, const char *match, uint64_t cursor, uint64_t count);
 extern redisReply *scan(int redis_id, uint32_t cursor);
+#endif
 
 #endif

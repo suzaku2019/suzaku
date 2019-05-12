@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#if 0
 #include "chk_proto.h"
 #include "file_proto.h"
 
@@ -39,4 +40,5 @@ typedef struct {
 
 #define CHUNK_OFFSET (PAGE_SIZE * 2)
 
+#endif
 #endif

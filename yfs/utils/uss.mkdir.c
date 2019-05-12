@@ -34,7 +34,7 @@ static int __sdfs_mkdir_recurive(const char *path, const ec_t *ec, mode_t mode, 
         if (strcmp(dirname, ROOT_NAME) == 0) {
                 DINFO("dirname (%s), basename (%s)\n", dirname, basename);
 
-                ret = sdfs_mkvol(basename, ec, mode, &fileid);
+                ret = sdfs_mkpool(basename, ec, mode, &fileid);
                 if (ret) {
                         if (ret == EEXIST) {
                                 //pass

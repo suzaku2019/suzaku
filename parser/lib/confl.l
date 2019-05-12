@@ -23,7 +23,7 @@ extern int line;
 
 "ynfs"                { return YNFS; }
 
-"yiscsi"              { return YISCSI; }
+"iscsi"              { return YISCSI; }
 
 "log"                 { return LOG; }
 
@@ -89,7 +89,7 @@ extern int line;
     return WORD;
 }
 
-iqn\.[0-9]{4}\-[0-9]{2}\.com\.[a-zA-Z0-9_]+ {
+iqn\.[0-9]{4}\-[0-9]{2}(-[0-9]+)?\.[a-z]+\.[a-zA-Z0-9_]+ {
         yylval.string = strdup(yytext);
         return IQN;
 }

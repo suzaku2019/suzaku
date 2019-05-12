@@ -19,15 +19,16 @@
 static dirop_t *dirop = &__dirop__;
 static inodeop_t *inodeop = &__inodeop__;
 
-static uint64_t __systemvolid__ = -1;
 
 #if 0
+static uint64_t __systemvolid__ = -1;
+
 static int __md_getsize(md_proto_t *_md)
 {
         int ret;
         fileinfo_t *md = (void *)_md;
         chkinfo_t *chkinfo;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
 
         if (md->chknum == 0) {
                 md->at_size = 0;
@@ -57,12 +58,6 @@ int md_getattr(const volid_t *volid, const fileid_t *fileid, md_proto_t *md)
         if (ret)
                 GOTO(err_ret, ret);
 
-#if ENABLE_ATTR_QUEUE
-        if (ng.daemon) {
-                attr_queue_update(volid, fileid, md);
-        }
-#endif
-
 #if 0
         if (mdsconf.size_on_md && S_ISREG(md->at_mode)) {
                 ret = __md_getsize(md);
@@ -73,64 +68,6 @@ int md_getattr(const volid_t *volid, const fileid_t *fileid, md_proto_t *md)
         
         ANALYSIS_QUEUE(0, IO_WARN, NULL);
         
-        return 0;
-err_ret:
-        return ret;
-}
-
-int md_system_volid(uint64_t *id)
-{
-        int ret;
-        fileid_t fileid;
-
-        if (__systemvolid__ == (uint64_t)-1) {
-                DINFO("load system volid\n");
-                
-                ret = sdfs_lookupvol(SDFS_SYSTEM_VOL, &fileid);
-                if(ret)
-                        GOTO(err_ret, ret);
-
-                __systemvolid__ = fileid.volid;
-        }
-
-        *id = __systemvolid__;
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-int md_initroot()
-{
-        int ret;
-        setattr_t setattr;
-        fileid_t fileid;
-
-        setattr_init(&setattr, -1, -1, NULL, -1, -1, -1);
-        ret = md_mkvol(SDFS_SYSTEM_VOL, &setattr, &fileid);
-        if (ret) {
-                if (ret == EEXIST) {
-                        ret = md_lookupvol(SDFS_SYSTEM_VOL, &fileid);
-                        if (ret)
-                                GOTO(err_ret, ret);
-                } else
-                        GOTO(err_ret, ret);
-        }
-        
-        ret = md_root_create(fileid.volid);
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = md_root_init();
-        if (ret)
-                GOTO(err_ret, ret);
-        
-#if 0
-        ret = inodeop->init();
-        if (ret)
-                GOTO(err_ret, ret);
-#endif
-
         return 0;
 err_ret:
         return ret;
@@ -251,7 +188,7 @@ int md_rename(const volid_t *volid, const fileid_t *fparent,
         if (ret)
                 GOTO(err_ret, ret);
 
-        if (fileid.id == fileid.volid) {
+        if (fileid.id == fileid.poolid) {
                 ret = EPERM;
                 GOTO(err_ret, ret);
         }
@@ -274,7 +211,7 @@ int md_remove(const volid_t *volid, const fileid_t *fileid)
         int ret, i, j;
         chkinfo_t *chkinfo;
         chkid_t chkid;
-        char _chkinfo[CHK_SIZE(YFS_CHK_REP_MAX)];
+        char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
         fileinfo_t *md;
         char buf[MAX_BUF_LEN] = {0};
 
@@ -295,7 +232,10 @@ int md_remove(const volid_t *volid, const fileid_t *fileid)
                         continue;
 
                 for (j = 0; j < (int)chkinfo->repnum; j++) {
-                        rm_push(&chkinfo->diskid[i], -1, &chkinfo->chkid);
+                        UNIMPLEMENTED(__DUMP__);
+#if 0
+                        //rm_push(&chkinfo->diskid[i].id, -1, &chkinfo->chkid);
+#endif
                 }
         }
 

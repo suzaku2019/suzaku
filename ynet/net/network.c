@@ -17,7 +17,7 @@
 #include "conn.h"
 #include "net_global.h"
 #include "network.h"
-#include "mond_rpc.h"
+#include "mds_rpc.h"
 #include "schedule.h"
 #include "configure.h"
 #include "dbg.h"
@@ -102,7 +102,7 @@ err_ret:
         return ret;
 }
 
-int network_connect_mond(int force)
+int network_connect_mds(int force)
 {
         int ret;
         nid_t nid;
@@ -134,7 +134,7 @@ int network_connect_mond(int force)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = mond_rpc_null(&nid);
+        ret = mds_rpc_null(&nid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -179,7 +179,7 @@ retry:
                 DINFO("connect to master %s, local %s\n",
                       network_rname(net_getadmin()),
                       network_rname(net_getnid()));
-                ret = network_connect_mond(0);
+                ret = network_connect_mds(0);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         }
@@ -413,7 +413,7 @@ retry:
 
 
         if (ng.daemon == 0) {
-                ret = mond_rpc_getstat(nid, &instat);
+                ret = mds_rpc_getstat(nid, &instat);
                 if (ret)
                         GOTO(err_ret, ret);
 
@@ -443,6 +443,8 @@ retry:
                 goto err_ret;
         }
 
+        YASSERT(ltime);
+        
 out:
         return 0;
 err_ret:

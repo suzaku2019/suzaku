@@ -156,7 +156,7 @@ class Etcd_manage(object):
         """
         :return: app admin host
         """
-        cmd = u"etcdctl get /sdfs/mond/master | awk -F',' '{print $1}'"
+        cmd = u"etcdctl get /sdfs/mds/master | awk -F',' '{print $1}'"
         (host, err) = _exec_shell1(cmd, p=False)
         if err.strip() != '':
             raise Exp(errno.EPERM, "%s:%s" % (host.strip(), err.strip()))
