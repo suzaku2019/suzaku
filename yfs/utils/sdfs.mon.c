@@ -18,7 +18,7 @@
 #include "sdfs_list.h"
 #include "redis_util.h"
 #include "redis_conn.h"
-#include "../../sdfs/io_analysis.h"
+#include "io_analysis.h"
 #include "nodectl.h"
 
 void usage(const char *prog)

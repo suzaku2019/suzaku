@@ -50,8 +50,8 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/test/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl
     ${CMAKE_CURRENT_SOURCE_DIR}/parser/include
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/include
@@ -176,46 +176,39 @@ add_library(sdfs SHARED
     #------sdfs------
 
     #${CMAKE_CURRENT_SOURCE_DIR}/license/src/aes.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_co.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_pipeline.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_vol.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/redis_conn.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_attr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/dir_etcd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/chunk_etcd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/inode_etcd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/kv_etcd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/chunk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/chunk_replica.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/allocator.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/io_analysis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_inode.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_dir.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/vss.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/volume.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/vs_chunk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range_ctl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range_rpc.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_co.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_pipeline.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_vol.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_conn.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_attr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/dir_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/chunk_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/inode_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/kv_etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/chunk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/chunk_replica.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/allocator.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/io_analysis.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_inode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_dir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/vss.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/volume.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/vs_chunk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range_ctl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range_rpc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/cds_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_chunk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_chunk_recovery.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/license/src/license_helper.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_dir.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_pool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_node.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_super.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_chunk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_file.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_user.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_group.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_quota.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_share.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/metadata/md_lvm_qos.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/metadata/md.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_chunk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_chunk_recovery.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_dir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_pool.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_node.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_chunk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/dir.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/node.c
