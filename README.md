@@ -52,19 +52,18 @@ Create Cluster
 
 Create Pool
 ===========================================================
-sdfs mkpool testpool
+    sdfs mkpool default
 
 
 Add disk
 ===========================================================
-sdfs disk add --pool testpool --driver raw_aio --device /dev/sdb
+    sdfs disk add --pool default --driver raw_aio --device /dev/sdb
 
 Create iSCSI Volume
 ===========================================================
-sdfs truncate /testpool/vol1 --size 10G
-sdfs attr -s iscsi -V enable /testpool/vol1
-sdfs attr -g iscsi /testpool/vol1
-iscsiadm -m discovery -t sendtargets -p <ip>
+    sdfs truncate /default/vol1 --size 10G
+    sdfs attr -s iscsi -V enable /default/vol1
+    iscsiadm -m discovery -t sendtargets -p <ip>
 
 Usage
 ===========================================================

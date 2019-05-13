@@ -137,8 +137,6 @@ void mds_exit_handler(int sig)
 
 int mds_init(const char *home)
 {
-        int ret;
-
         (void) home;
         
         ng.mds_nh.type = NET_HANDLE_PERSISTENT;
@@ -148,20 +146,10 @@ int mds_init(const char *home)
         mds_info.mds_type = MDS_PRIMARY;
         mds_info.uptime = time(NULL);
 
-        ret = mds_rpc_init();
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = rpc_start(); /*begin serivce*/
-        if (ret)
-                GOTO(err_ret, ret);
-
         __mds_master__ = 1;
         net_setadmin(net_getnid());
         
         return 0;
-err_ret:
-        return ret;
 }
 
 static int __mon_master(etcd_lock_t *lock, const char *home)
@@ -389,6 +377,14 @@ int mds_run(void *args)
                 GOTO(err_ret, ret);
 
         ret = allocator_init();
+        if (ret)
+                GOTO(err_ret, ret);
+
+        ret = mds_rpc_init();
+        if (ret)
+                GOTO(err_ret, ret);
+
+        ret = rpc_start(); /*begin serivce*/
         if (ret)
                 GOTO(err_ret, ret);
         

@@ -125,7 +125,7 @@ static int __disk_write_wait(entry_t *ent, const io_t *io)
 
         sy_spin_unlock(&ent->spin);
 
-        DBUG("write "CHKID_FORMAT" clock %ju wait\n",
+        DINFO("write "CHKID_FORMAT" clock %ju wait\n",
              CHKID_ARG(&io->id), io->vclock.clock);
 
         ret = schedule_yield1("write_wait_clock", NULL, &wlist,
@@ -134,7 +134,7 @@ static int __disk_write_wait(entry_t *ent, const io_t *io)
                 GOTO(err_ret, ret);
         }
 
-        DBUG("write "CHKID_FORMAT" clock %ju resume\n",
+        DINFO("write "CHKID_FORMAT" clock %ju resume\n",
              CHKID_ARG(&io->id), io->vclock.clock);
         
 out:
@@ -200,6 +200,27 @@ err_ret:
         return ret;
 }
 
+static void IO_FUNC __disk_post_clock(entry_t *ent)
+{
+        struct list_head *pos, *n;
+        wlist_t *wlist;
+
+        list_for_each_safe(pos, n, &ent->wlist) {
+                wlist = (void *)pos;
+                DINFO("chunk "CHKID_FORMAT", clock %ju:%ju\n",
+                      CHKID_ARG(&ent->chkid), ent->vclock.clock, wlist->vclock.clock);
+                if (wlist->vclock.clock < ent->vclock.clock) {
+                        list_del(pos);
+                        DWARN("chunk "CHKID_FORMAT", clock %ju:%ju\n",
+                              CHKID_ARG(&ent->chkid), ent->vclock.clock, wlist->vclock.clock);
+                        schedule_resume(&wlist->task, ESTALE, NULL);
+                } else if (wlist->vclock.clock == ent->vclock.clock + 1) {
+                        list_del(pos);
+                        schedule_resume(&wlist->task, 0, NULL);
+                }
+        }
+}
+
 static int IO_FUNC __disk_post_write(entry_t *ent, const io_t *io)
 {
         int ret;
@@ -211,6 +232,7 @@ static int IO_FUNC __disk_post_write(entry_t *ent, const io_t *io)
         ent->writing--;
 
         __disk_clock(&ent->chkid, &io->vclock, 0);
+        __disk_post_clock(ent);
 
         if (ent->sessid != io->sessid) {
                 ret = ESTALE;

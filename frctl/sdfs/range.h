@@ -12,6 +12,14 @@ typedef chkid_t rid_t;
 static inline void cid2rid(const chkid_t *chkid, rid_t *rid)
 {
         *rid = *chkid;
+        if (chkid->type == ftype_raw) {
+                rid->type = ftype_sub;
+        } else if (chkid->type == ftype_sub) {
+                rid->type = ftype_file;
+        } else {
+                YASSERT(0);
+        }
+
         rid->idx = chkid->idx / RANGE_ITEM_COUNT;
 }
 

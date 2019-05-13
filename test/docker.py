@@ -265,12 +265,17 @@ class DockerNode():
         for i in dock_list:
             lst = lst + (i + ",")
 
-        lst = lst[:-1] 
+        lst = lst[:-1]
+        if (len(dock_list) == 1):
+            solo = "on"
+        else:
+            solo = "off"
             
         cmd = [
             "cp /tmp/%s/test/sdfs.conf /opt/%s/etc/sdfs.conf" % (project, sdfs),
-            "sed -i 's/127.0.0.0/%s/g' /opt/%s/etc/sdfs.conf" % (self.addr, sdfs), 
-            '/opt/%s/app/admin/cluster.py create --hosts %s ' % (sdfs, lst),           
+            "sed -i 's/127.0.0.0/%s/g' /opt/%s/etc/sdfs.conf" % (self.addr, sdfs),
+            "sed -i 's/solomode off/solomode %s/g' /opt/%s/etc/sdfs.conf" % (solo, sdfs),
+            '/opt/%s/app/admin/cluster.py create --hosts %s ' % (sdfs, lst),
         ]
 
         for i in cmd:

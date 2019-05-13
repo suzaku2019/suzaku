@@ -20,6 +20,8 @@ RUN yum install -y cmake gcc-c++ libtool automake libuuid-devel libaio-devel fle
 RUN yum install -y expect git net-tools openssh-server openssh-server-sysvinit vim nfs-utils sqlite-devel gperftools pdsh pdsh-rcmd-ssh
 RUN yum install -y gdb valgrind tree yasm libpciaccess-devel python-prettytable yajl-devel
 RUN yum clean all; systemctl enable sshd.service
+RUN sed -i 's/GSSAPIAuthentication yes/GSSAPIAuthentication no/g' /etc/ssh/sshd_config
+RUN sed -i 's/#UseDNS yes/UseDNS no/g' /etc/ssh/sshd_config
 
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 RUN python get-pip.py

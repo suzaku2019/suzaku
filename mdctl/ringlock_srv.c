@@ -324,6 +324,9 @@ static int __ringlock_check_range(uint32_t type, const coreid_t *coreid, const r
         if (range1.begin != range->begin
             || range1.end != range->end) {
                 ret = ESTALE;
+                DWARN("core %s/%d range "RANGE_FORMAT" -> "RANGE_FORMAT"\n",
+                      network_rname(&coreid->nid), coreid->idx, RANGE_ARG(&range1),
+                      RANGE_ARG(range));
                 GOTO(err_ret, ret);
         }
 

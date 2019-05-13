@@ -199,19 +199,27 @@ static int __disk_redis_run(disk_redis_t *co, struct list_head *list)
         return 0;
 }
 
-static void __disk_redis_run__(disk_redis_t *co)
+static void __disk_redis_run__(disk_redis_t *disk_redis)
 {
+        int ret;
         struct list_head list;
-
-        if (list_empty(&co->queue)) {
-                return;
-        }
 
         INIT_LIST_HEAD(&list);
 
-        list_splice_init(&co->queue, &list);
+        ret = sy_spin_lock(&disk_redis->spin);
+        if (ret)
+                UNIMPLEMENTED(__DUMP__);
         
-        __disk_redis_run(co, &list);
+        if (list_empty(&disk_redis->queue)) {
+                sy_spin_unlock(&disk_redis->spin);
+                return;
+        }
+
+        list_splice_init(&disk_redis->queue, &list);
+
+        sy_spin_unlock(&disk_redis->spin);
+        
+        __disk_redis_run(disk_redis, &list);
 }
 
 
@@ -237,8 +245,14 @@ static int __disk_redis(disk_redis_t *disk_redis, redisReply **reply,
                 if (unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
         }
+
+        ret = sy_spin_lock(&disk_redis->spin);
+        if (unlikely(ret))
+                UNIMPLEMENTED(__DUMP__);
         
         list_add_tail(&ctx.hook, &disk_redis->queue);
+
+        sy_spin_unlock(&disk_redis->spin);
 
         DBUG("%s\n", format);
 

@@ -538,7 +538,7 @@ static int IO_FUNC __disk_ref__(disk_t *disk, const chkid_t *chkid, entry_t **_e
         ent = htab_find(disk->htab, (void *)chkid);
         if (unlikely(ent == NULL)) {
                 ret = ENOENT;
-                GOTO(err_lock, ret);
+                goto err_lock;
         }
 
         ret = __disk_ref____(ent);
@@ -572,9 +572,16 @@ static int __disk_load__(disk_t *disk, const chkid_t *chkid)
 
         YASSERT(ent);
         ret = htab_insert(disk->htab, (void *)ent, &ent->chkid, 0);
-        if (unlikely(ret))
-                GOTO(err_free, ret);
-        
+        if (unlikely(ret)) {
+                if (ret == EEXIST) {
+                        disk->close(disk, ent);
+                        goto out;
+                } else {
+                        GOTO(err_free, ret);
+                }
+        }
+                        
+out:
         return 0;
 err_free:
         disk->close(disk, ent);

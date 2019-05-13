@@ -54,7 +54,7 @@ static void __part_update(part_t *part, const char *_part)
         char *list[MAX_PART], tmp[MAX_BUF_LEN];
         int32_t *array;
 
-        DINFO("new partition list %s\n", _part);
+        DINFO("%s new partition list %s\n", _part, part->name);
         
         strcpy(tmp, _part);
         count = MAX_PART;
@@ -106,7 +106,7 @@ static void *__part_worker(void *arg)
                 UNIMPLEMENTED(__DUMP__);
 
         while (1) {
-                ret = etcd_get_text(ETCD_PARTITION, part->name, buf, NULL);
+                ret = etcd_get_text(ETCD_PARTITION, part->name, buf, &idx);
                 if (ret) {
                         DWARN("partition %s not found\n", part->name);
                         sleep(1);
@@ -252,6 +252,9 @@ static int __part_hash(const part_t *part, uint64_t id, uint32_t *coreid)
         hash = id % part->array[part->count];
         hash = hash ? hash : part->array[part->count];
         for(i = 0; i < part->count; i++) {
+                DINFO("%s, part[%d] id %ju range(%ju, %ju]\n", part->name,
+                      i, id, part->array[i], part->array[i + 1])
+                
                 if (hash > part->array[i] && hash <= part->array[i + 1]) {
                         *coreid = part->array[i + 1];
                         break;
@@ -262,8 +265,8 @@ static int __part_hash(const part_t *part, uint64_t id, uint32_t *coreid)
 
         coreid_t _coreid;
         int2coreid(*coreid, &_coreid);
-        DINFO("hash %u --> %u --> %s/%u\n", id, hash,
-              network_rname(&_coreid.nid), _coreid.idx);
+        DINFO("%s hash %u --> %u --> %s/%u, idx %d count %d\n", part->name, id, hash,
+              network_rname(&_coreid.nid), _coreid.idx, i, part->count);
         
         return 0;
 err_ret:
@@ -313,7 +316,7 @@ err_ret:
 
 static int __part_register(const char *name)
 {
-        int ret;
+        int ret, retry = 0;
         char key[MAX_PATH_LEN], hostname[MAX_NAME_LEN];
         uint32_t _coreid;
         coreid_t coreid;
@@ -328,9 +331,11 @@ static int __part_register(const char *name)
 
         coreid2int(&coreid, &_coreid);
         snprintf(key, MAX_NAME_LEN, "%s/coreid/%u", name, _coreid);
+retry:
         ret = etcd_set_text(ETCD_INSTANCE, key, hostname, O_CREAT, -1);
-        if(unlikely(ret))
-                GOTO(err_ret, ret);
+        if(unlikely(ret)) {
+                USLEEP_RETRY(err_ret, ret, retry, retry, 10, (1000 * 1000));
+        }
 
         return 0;
 err_ret:
@@ -499,7 +504,8 @@ static int __part_range(const part_t *part, const coreid_t *coreid, range_t *ran
         
         if (i == part->count) {
                 ret = EAGAIN;
-                DWARN("nid %d not found, count %u\n", _coreid, i);
+                DWARN("%s/%d not found, count %u\n", network_rname(&coreid->nid),
+                      coreid->idx, i);
                 GOTO(err_ret, ret);
         }
 
@@ -541,18 +547,18 @@ int part_location(const chkid_t *chkid, int type, coreid_t *coreid)
 {
         int ret;
         rid_t rid;
+        uint64_t id;
 
         if (type == PART_FRCTL) {
                 cid2rid(chkid, &rid);
-
-                ret = part_hash(rid.id + rid.idx, type, coreid);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+                id = rid.id + rid.idx;
         } else {
-                ret = part_hash(chkid->id, type, coreid);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+                id = chkid->id;
         }
+                       
+        ret = part_hash(id, type, coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
 
         return 0;
 err_ret:

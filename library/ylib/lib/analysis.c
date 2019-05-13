@@ -285,7 +285,9 @@ static void *__worker(void *_args)
 
                 DBUG("analysis collect\n");
 
-                __analysis__(default_analysis, NULL);
+                if (default_analysis) {
+                        __analysis__(default_analysis, NULL);
+                }
         }
 
         return NULL;

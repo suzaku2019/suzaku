@@ -284,8 +284,11 @@ int ringlock_check(const chkid_t *chkid, int rtype, int flag, ltoken_t *token)
         }
 
         ret = ringlock_locked(rtype, token, flag);
-        if (unlikely(ret))
+        if (unlikely(ret)) {
+                DWARN(CHKID_FORMAT" @ core %s/%d fail\n", CHKID_ARG(chkid),
+                      network_rname(&coreid.nid), coreid.idx);
                 GOTO(err_ret, ret);
+        }
 
         return 0;
 err_ret:

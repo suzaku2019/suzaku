@@ -587,7 +587,6 @@ int etcd_get_text(const char *prefix, const char *_key, char *value, int *idx)
         YASSERT(node->key && node->value);
 
         strcpy(value, node->value);
-        YASSERT(strcmp(value, ""));
 
         if (idx)
                 *idx = node->modifiedIndex;
