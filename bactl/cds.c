@@ -29,7 +29,7 @@
 #include "core.h"
 #include "io_analysis.h"
 #include "net_global.h"
-#include "../../cds/diskio.h"
+#include "diskio.h"
 #include "bh.h"
 #include "dbg.h"
 

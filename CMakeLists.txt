@@ -52,13 +52,13 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/schedule
     ${CMAKE_CURRENT_SOURCE_DIR}/metadata
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl
     ${CMAKE_CURRENT_SOURCE_DIR}/parser/include
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ynet/include
     ${CMAKE_CURRENT_SOURCE_DIR}/ylib/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds
     ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc
     ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs
@@ -200,7 +200,7 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/range_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/cds_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/cds_rpc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_chunk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdfs/sdfs_chunk_recovery.c
     #${CMAKE_CURRENT_SOURCE_DIR}/license/src/license_helper.c
@@ -232,41 +232,40 @@ add_library(sdfs SHARED
 
     #------cds------
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/cds.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/cds/cds_hb.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_alloc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_write.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_read.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_fs.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_redis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_raw.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_raw_aio.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/disk_io.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/diskid.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/cds/diskio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/cds.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_alloc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_read.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_fs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_redis.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_raw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_raw_aio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_io.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/diskid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/diskio.c
 
-    #------mds------
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_kv.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_lease.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/lease_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/lease_cli.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/partition.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/ringlock_srv.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/ringlock_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/ringlock.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/pa_srv.c
+    #------mdctl------
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds_kv.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds_lease.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/lease_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/lease_cli.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/partition.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/ringlock_srv.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/ringlock_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/ringlock.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/pa_srv.c
 )
 
 set (MDS_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds_main.c
 )
 
 set (CDS_SRC_LIST
-	${CMAKE_CURRENT_SOURCE_DIR}/cds/main.c
+	${CMAKE_CURRENT_SOURCE_DIR}/bactl/main.c
 )
 
 set (FRCTL_SRC_LIST
@@ -345,24 +344,6 @@ target_link_libraries(sdfs.perf ${CMAKE_C_LIBS})
 
 #add_executable(test_aio ${CMAKE_CURRENT_SOURCE_DIR}/test/src/test_aio.c ${CMAKE_CURRENT_SOURCE_DIR}/test/src/test_aio_lib.c)
 #target_link_libraries(test_aio ${CMAKE_C_LIBS})
-
-set (MDS_SRC_PERF_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_state_machine.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/disk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/diskpool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/nodepool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/nodepool_hdd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/nodepool_ssd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/election.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/license/src/license_helper.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/mds/mds_license.c
-)
-
-#add_executable(sdfs.perf_mds ${MDS_SRC_PERF_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.perf_mds.c)
-#target_link_libraries(sdfs.perf_mds ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.prof ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.prof.c)
 #target_link_libraries(sdfs.prof ${CMAKE_C_LIBS})

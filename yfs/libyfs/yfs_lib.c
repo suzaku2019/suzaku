@@ -27,7 +27,7 @@
 #include "ynet_rpc.h"
 #include "attr_queue.h"
 #include "io_analysis.h"
-#include "../../cds/cds_rpc.h"
+#include "cds_rpc.h"
 #include "net_global.h"
 #include "partition.h"
 #include "diskid.h"
