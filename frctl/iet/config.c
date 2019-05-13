@@ -725,13 +725,14 @@ static int __sdfs_iscsi_enabled(const dirid_t *dirid, const char *name, int *ena
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        valuelen = MAX_NAME_LEN;
         ret = sdfs_getxattr(NULL, &fileid, SDFS_SYSTEM_ATTR_ISCSI, value, &valuelen);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
         DINFO("%s %s\n", name, value);
         
-        if (strcmp(value, "true") == 0) {
+        if (strcmp(value, SDFS_SYSTEM_ATTR_ENABLE) == 0) {
                 *enabled = 1;
         } else {
                 *enabled = 0;

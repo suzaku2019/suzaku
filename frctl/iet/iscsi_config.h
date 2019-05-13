@@ -40,10 +40,13 @@
 #define ISER_LISTEN_PORT 32600
 
 
-#define SDFS_SYSTEM_ATTR_VAAI     "__sdfs_vaai__"
-#define SDFS_SYSTEM_ATTR_ISCSI     "__sdfs_iscsi__"
-#define SDFS_SYSTEM_ATTR_THIN     "__sdfs_provisioning__"        //defined by Mr. wang
-#define SDFS_SYSTEM_ATTR_SCSI_ID     "scsi_id"
+#define SDFS_SYSTEM_ATTR_VAAI     "vaai"
+#define SDFS_SYSTEM_ATTR_ISCSI     "iscsi"
+#define SDFS_SYSTEM_ATTR_THIN     "thin"        //defined by Mr. wang
+#define SDFS_SYSTEM_ATTR_SCSI_ID     "scsiid"
+
+#define SDFS_SYSTEM_ATTR_ENABLE "enable"
+#define SDFS_SYSTEM_ATTR_DISABLE "disable"
 
 #define ISCSI_LUN_MAX           254
 

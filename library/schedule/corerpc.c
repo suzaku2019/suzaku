@@ -47,6 +47,7 @@ static void __request_nosys(void *arg)
 
         request_trans(arg, &nid, &sockid, &msgid, &buf, NULL);
 
+        DBUG("nosys\n");
         schedule_task_setname("nosys");
         mbuffer_free(&buf);
         corerpc_reply_error(&sockid, &msgid, ENOSYS);

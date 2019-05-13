@@ -59,6 +59,13 @@ Add disk
 ===========================================================
 sdfs disk add --pool testpool --driver raw_aio --device /dev/sdb
 
+Create iSCSI Volume
+===========================================================
+sdfs truncate /testpool/vol1 --size 10G
+sdfs attr -s iscsi -V enable /testpool/vol1
+sdfs attr -g iscsi /testpool/vol1
+iscsiadm -m discovery -t sendtargets -p <ip>
+
 Usage
 ===========================================================
 

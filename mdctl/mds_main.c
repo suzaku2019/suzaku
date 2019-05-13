@@ -152,16 +152,6 @@ int mds_init(const char *home)
         if (ret)
                 GOTO(err_ret, ret);
 
-#if 0
-        ret = diskpool_init(&mds_info.diskpool);
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = nodepool_init();
-        if (ret)
-                GOTO(err_ret, ret);
-#endif
-
         ret = rpc_start(); /*begin serivce*/
         if (ret)
                 GOTO(err_ret, ret);

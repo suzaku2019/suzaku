@@ -135,8 +135,10 @@ int network_connect_mds(int force)
                 GOTO(err_ret, ret);
 
         ret = mds_rpc_null(&nid);
-        if (unlikely(ret))
+        if (unlikely(ret)) {
+                DBUG("nid %d\n", nid.id);
                 GOTO(err_ret, ret);
+        }
         
         DBUG("set admin %u\n", nid.id);
         net_setadmin(&nid);

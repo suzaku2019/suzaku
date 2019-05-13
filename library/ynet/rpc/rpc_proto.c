@@ -23,6 +23,7 @@ static void __request_nosys(void *arg)
 
         request_trans(arg, NULL, &sockid, &msgid, &buf, NULL);
 
+        DBUG("nosys\n");
         schedule_task_setname("nosys");
         mbuffer_free(&buf);
         rpc_reply_error(&sockid, &msgid, ENOSYS);

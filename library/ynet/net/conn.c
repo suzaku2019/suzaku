@@ -147,10 +147,12 @@ static int __conn_add(const nid_t *nid)
         __faultdomain_last_update__ = 0;
 #endif
 
-        ret = mds_rpc_getstat(nid, &instat);
-        if (ret) {
-                DINFO("%u %s not online\n", nid->id, info->name);
-                goto out;
+        if (!net_islocal(nid)) {
+                ret = mds_rpc_getstat(nid, &instat);
+                if (ret) {
+                        DINFO("%s nid %d not online\n", info->name, nid->id);
+                        goto out;
+                }
         }
 
         DINFO("connect to %u %s\n", nid->id, info->name);

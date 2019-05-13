@@ -315,7 +315,6 @@ int rpc_request_wait(const char *name, const nid_t *nid, const void *request, in
         mbuffer_init(&buf, 0);
         id2nh(&nh, nid);
 
-
         ret = __rpc_request_wait(name, &nh, request, reqlen, NULL, &buf, msg_type, priority, timeout);
         if (unlikely(ret))
                 goto err_ret;

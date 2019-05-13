@@ -34,13 +34,6 @@ extern net_global_t ng;
 typedef enum {
         MDS_NULL = 400,
         MDS_GETSTAT,
-#if 0
-        MDS_DISKHB,
-        MDS_NEWDISK,
-        MDS_DISKJOIN,
-        MDS_STATVFS,
-#endif
-        
         MDS_SET,
         MDS_GET,
         MDS_PASET,
@@ -628,26 +621,13 @@ int mds_rpc_init()
         __request_set_handler(MDS_NULL, __mds_srv_null, "mds_srv_null");
         __request_set_handler(MDS_GETSTAT, __mds_srv_getstat, "mds_srv_getstat");
 
-#if 0
-        __request_set_handler(MDS_DISKHB, __mds_srv_diskhb, "mds_srv_diskhb");
-        __request_set_handler(MDS_NEWDISK, __mds_srv_newdisk, "mds_srv_newdisk");
-        __request_set_handler(MDS_DISKJOIN, __mds_srv_diskjoin, "mds_srv_diskjoin");
-        __request_set_handler(MDS_STATVFS, __mds_srv_statvfs, "mds_srv_statvfs");
-#endif
         __request_set_handler(MDS_GET, __mds_srv_get, "mds_srv_get");
         __request_set_handler(MDS_SET, __mds_srv_set, "mds_srv_set");
-#if 1
         __request_set_handler(MDS_PASET, __mds_srv_paset, "mds_srv_paset");
         __request_set_handler(MDS_PAGET, __mds_srv_paget, "mds_srv_paget");
-#endif
-        
-        if (ng.daemon) {
-                rpc_request_register(MSG_MDS, __request_handler, NULL);
 
-#if 1
-                corerpc_register(MSG_MDS_CORE, __request_handler, NULL);
-#endif
-        }
+        rpc_request_register(MSG_MDS, __request_handler, NULL);
+        corerpc_register(MSG_MDS_CORE, __request_handler, NULL);
         
         return 0;
 err_ret:

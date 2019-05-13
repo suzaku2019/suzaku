@@ -142,7 +142,7 @@ static int __iscsi_target_create(u32 tid, const char *name, const char *path,
                 target->thin_provisioning = 1;
                 ret = sdfs_getxattr(NULL, fileid, SDFS_SYSTEM_ATTR_THIN, thin, &vallen);
                 if (!ret){
-                        if (strcmp(thin, "thin") != 0) {
+                        if (strcmp(thin, SDFS_SYSTEM_ATTR_ENABLE) != 0) {
                                 target->thin_provisioning = 0;
                         }
                 }
