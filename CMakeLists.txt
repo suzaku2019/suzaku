@@ -46,18 +46,16 @@ set(CMAKE_C_LIBS sdfs pthread crypt crypto uuid ssl z m curl yajl hiredis)
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule
-    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata
-    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs
-    ${CMAKE_CURRENT_SOURCE_DIR}/bactl
     ${CMAKE_CURRENT_SOURCE_DIR}/library/config/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/include
     ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/include
     ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl
-    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds
     ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc
     ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl
+    ${CMAKE_CURRENT_SOURCE_DIR}/mdctl
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/libyfs
     ${CMAKE_CURRENT_BINARY_DIR}/
 )
 
@@ -193,13 +191,11 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_chunk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/dir.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/file.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/node.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/super.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/raw.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/file_table.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/yfs_lib.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/libyfs/dir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/libyfs/file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/libyfs/node.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/libyfs/raw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/libyfs/yfs_lib.c
 
     #------bactl------
 
@@ -275,130 +271,130 @@ target_link_libraries(sdfs.frctl ${CMAKE_C_LIBS})
 #add_executable(sdfs.nlm ${YNLM_SRC_LIST})
 #target_link_libraries(sdfs.nlm ${CMAKE_C_LIBS})
 
-add_executable(sdfs.configdump ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.configdump.c)
+add_executable(sdfs.configdump ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.configdump.c)
 target_link_libraries(sdfs.configdump ${CMAKE_C_LIBS})
 
-add_executable(sdfs.write ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.write.c)
+add_executable(sdfs.write ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.write.c)
 target_link_libraries(sdfs.write ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.mv ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mv.c)
+#add_executable(sdfs.mv ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.mv.c)
 #target_link_libraries(sdfs.mv ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.zk ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.zk.c)
+#add_executable(sdfs.zk ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.zk.c)
 #target_link_libraries(sdfs.zk ${CMAKE_C_LIBS})
 
-add_executable(sdfs.cat ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.cat.c)
+add_executable(sdfs.cat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.cat.c)
 target_link_libraries(sdfs.cat ${CMAKE_C_LIBS})
 
-add_executable(sdfs.attr ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.attr.c)
+add_executable(sdfs.attr ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.attr.c)
 target_link_libraries(sdfs.attr ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.objmv ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.objmv.c)
+#add_executable(sdfs.objmv ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.objmv.c)
 #target_link_libraries(sdfs.objmv ${CMAKE_C_LIBS})
 
-add_executable(sdfs.mkdir ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mkdir.c)
+add_executable(sdfs.mkdir ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.mkdir.c)
 target_link_libraries(sdfs.mkdir ${CMAKE_C_LIBS})
 
 add_executable(sdfs.mkpool ${CMAKE_CURRENT_SOURCE_DIR}/utils/sdfs.mkpool.c)
 target_link_libraries(sdfs.mkpool ${CMAKE_C_LIBS})
 
-add_executable(sdfs.truncate ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.truncate.c)
+add_executable(sdfs.truncate ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.truncate.c)
 target_link_libraries(sdfs.truncate ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.mdstat ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mdstat.c)
+#add_executable(sdfs.mdstat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.mdstat.c)
 #target_link_libraries(sdfs.mdstat ${CMAKE_C_LIBS})
 
-add_executable(sdfs.touch ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.touch.c)
+add_executable(sdfs.touch ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.touch.c)
 target_link_libraries(sdfs.touch ${CMAKE_C_LIBS})
 
-add_executable(sdfs.perf ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.perf.c)
+add_executable(sdfs.perf ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.perf.c)
 target_link_libraries(sdfs.perf ${CMAKE_C_LIBS})
 
 #add_executable(test_aio ${CMAKE_CURRENT_SOURCE_DIR}/test/src/test_aio.c ${CMAKE_CURRENT_SOURCE_DIR}/test/src/test_aio_lib.c)
 #target_link_libraries(test_aio ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.prof ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.prof.c)
+#add_executable(sdfs.prof ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.prof.c)
 #target_link_libraries(sdfs.prof ${CMAKE_C_LIBS})
 
-add_executable(sdfs.ls ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.ls.c)
+add_executable(sdfs.ls ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.ls.c)
 target_link_libraries(sdfs.ls ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.health ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/sdfs.health.c)
+#add_executable(sdfs.health ${CMAKE_CURRENT_SOURCE_DIR}/utils/sdfs.health.c)
 #target_link_libraries(sdfs.health ${CMAKE_C_LIBS})
 
-add_executable(sdfs.mon ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/sdfs.mon.c)
+add_executable(sdfs.mon ${CMAKE_CURRENT_SOURCE_DIR}/utils/sdfs.mon.c)
 target_link_libraries(sdfs.mon ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.ln ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.ln.c)
+#add_executable(sdfs.ln ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.ln.c)
 #target_link_libraries(sdfs.ln ${CMAKE_C_LIBS})
 
-add_executable(sdfs.rmdir ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.rmdir.c)
+add_executable(sdfs.rmdir ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.rmdir.c)
 target_link_libraries(sdfs.rmdir ${CMAKE_C_LIBS})
 
-add_executable(sdfs.rm ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.rm.c)
+add_executable(sdfs.rm ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.rm.c)
 target_link_libraries(sdfs.rm ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.cp ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.cp.c)
+#add_executable(sdfs.cp ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.cp.c)
 #target_link_libraries(sdfs.cp ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.chkstat ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.chkstat.c)
+#add_executable(sdfs.chkstat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chkstat.c)
 #target_link_libraries(sdfs.chkstat ${CMAKE_C_LIBS})
 
-add_executable(sdfs.stat ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.stat.c)
+add_executable(sdfs.stat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.stat.c)
 target_link_libraries(sdfs.stat ${CMAKE_C_LIBS})
 
-add_executable(sdfs.chmod ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.chmod.c)
+add_executable(sdfs.chmod ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chmod.c)
 target_link_libraries(sdfs.chmod ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.clone ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.clone.c)
+#add_executable(sdfs.clone ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.clone.c)
 #target_link_libraries(sdfs.clone ${CMAKE_C_LIBS})
 
-add_executable(sdfs.md5sum ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.md5sum.c)
+add_executable(sdfs.md5sum ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.md5sum.c)
 target_link_libraries(sdfs.md5sum ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.sysop ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.sysop.c)
+#add_executable(sdfs.sysop ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.sysop.c)
 #target_link_libraries(sdfs.sysop ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.mdsdrop ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.mdsdrop.c)
+#add_executable(sdfs.mdsdrop ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.mdsdrop.c)
 #target_link_libraries(sdfs.mdsdrop ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.cdstat ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.cdstat.c)
+#add_executable(sdfs.cdstat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.cdstat.c)
 #target_link_libraries(sdfs.cdstat ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.ffc ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.ffc.c)
+#add_executable(sdfs.ffc ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.ffc.c)
 #target_link_libraries(sdfs.ffc ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.hsm ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.hsm.c)
+#add_executable(sdfs.hsm ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.hsm.c)
 #target_link_libraries(sdfs.hsm ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.fallocate ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.fallocate.c)
+#add_executable(sdfs.fallocate ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.fallocate.c)
 #target_link_libraries(sdfs.fallocate ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.du ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.du.c)
+#add_executable(sdfs.du ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.du.c)
 #target_link_libraries(sdfs.du ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.statvfs ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.statvfs.c)
+#add_executable(sdfs.statvfs ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.statvfs.c)
 #target_link_libraries(sdfs.statvfs ${CMAKE_C_LIBS})
 
 #set (USS_WORM_SRC
-#        ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.worm.c
+#        ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.worm.c
 #)
 
 #add_executable(sdfs.worm ${USS_WORM_SRC})
 #target_link_libraries(sdfs.worm ${CMAKE_C_LIBS})
 
-add_executable(sdfs.chown ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.chown.c)
+add_executable(sdfs.chown ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chown.c)
 target_link_libraries(sdfs.chown ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.quota ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.quota.c)
+#add_executable(sdfs.quota ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.quota.c)
 #target_link_libraries(sdfs.quota ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.share ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.share.c)
+#add_executable(sdfs.share ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.share.c)
 #target_link_libraries(sdfs.share ${CMAKE_C_LIBS})
 
 set (USS_ADMIN_SRC
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.admin.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/option.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.admin.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils/option.c
 )
 add_executable(sdfs.admin ${USS_ADMIN_SRC})
 target_link_libraries(sdfs.admin ${CMAKE_C_LIBS} hiredis)

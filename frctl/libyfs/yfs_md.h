@@ -6,7 +6,6 @@
 #include "ylib.h"
 #include "chk_proto.h"
 #include "net_proto.h"
-#include "disk_proto.h"
 #include "dbg.h"
 
 #define __S_CLEAN       0x00000000

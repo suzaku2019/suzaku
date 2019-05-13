@@ -3,7 +3,6 @@
 
 #include <sys/statvfs.h>
 
-#include "disk_proto.h"
 #include "md_proto.h"
 
 int mds_kv_init();

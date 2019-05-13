@@ -4,11 +4,10 @@
 #include <sys/statvfs.h>
 #include <stdint.h>
 
+#if 0
 #include "adt.h"
 #include "chk_proto.h"
 #include "disk_proto.h"
-#include "file_proto.h"
-#include "node_proto.h"
 #include "net_proto.h"
 #include "yfs_md.h"
 #include "sdfs_lib.h"
@@ -30,6 +29,8 @@ typedef struct {
         uint32_t __pad__;
         volrept_t volrept[0];/*chkjnl_t already aligned*/
 } volinfo_t;
+#endif
+
 
 #define NEWREP_NORMAL 0
 #define NEWREP_UNREG 1

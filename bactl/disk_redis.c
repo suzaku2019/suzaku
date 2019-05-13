@@ -16,9 +16,6 @@
 
 #define DBG_SUBSYS S_YFSCDS
 
-#include "yfs_conf.h"
-#include "yfscds_conf.h"
-#include "chk_meta.h"
 #include "network.h"
 #include "cds.h"
 #include "disk.h"
@@ -30,7 +27,6 @@
 #include "diskid.h"
 #include "md_lib.h"
 #include "bh.h"
-#include "cds_hb.h"
 #include "net_global.h"
 #include "nodeid.h"
 #include "mds_rpc.h"

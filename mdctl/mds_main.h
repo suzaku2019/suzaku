@@ -13,8 +13,6 @@
 #include "md_lib.h"
 #include "dbg.h"
 #include "fnotify.h"
-#include "sdfs_quota.h"
-#include "flock.h"
 
 typedef enum {
         ELECTION_NORMAL,

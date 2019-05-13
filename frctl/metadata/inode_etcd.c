@@ -6,7 +6,6 @@
 
 #define DBG_SUBSYS S_YFSMDS
 
-#include "dir.h"
 #include "schedule.h"
 #include "net_global.h"
 #include "md_lib.h"

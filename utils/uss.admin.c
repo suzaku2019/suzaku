@@ -9,7 +9,6 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include "chk_meta.h"
 #include "ylib.h"
 #include "job_dock.h"
 #include "redis_util.h"

@@ -9,7 +9,6 @@
 
 #include "configure.h"
 #include "sdfs_lib.h"
-#include "file_proto.h"
 #include "md_lib.h"
 
 void show_help(char *prog)

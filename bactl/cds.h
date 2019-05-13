@@ -8,12 +8,10 @@
 #include <sys/statvfs.h>
 #include <sys/types.h>
 
-#include "disk_proto.h"
 #include "sdfs_list.h"
 #include "md_proto.h"
 #include "ylock.h"
 #include "ynet_rpc.h"
-#include "yfscds_conf.h"
 
 /**
  * global cds info

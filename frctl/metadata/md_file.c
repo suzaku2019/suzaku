@@ -4,7 +4,6 @@
 #define DBG_SUBSYS S_YFSMDC
 
 #include "sdfs_buffer.h"
-#include "file_proto.h"
 #include "net_global.h"
 #include "ynet_rpc.h"
 #include "ylib.h"

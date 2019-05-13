@@ -8,7 +8,6 @@
 #include "network.h"
 #include "net_global.h"
 #include "sdfs_lib.h"
-#include "file_proto.h"
 #include "xattr.h"
 
 typedef enum {

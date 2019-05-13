@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <dirent.h>
 
-#include "yfs_conf.h"
 #include "configure.h"
 #include "sdfs_lib.h"
 #include "net_global.h"

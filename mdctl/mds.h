@@ -8,8 +8,6 @@
 #include "ylock.h"
 #include "ynet_rpc.h"
 #include "yatomic.h"
-#include "file_proto.h"
-#include "yfs_conf.h"
 
 enum {
         MDS_NULL,

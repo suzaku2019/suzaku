@@ -10,16 +10,11 @@
 #define DBG_SUBSYS S_YFSLIB
 
 #include "md_lib.h"
-#include "rep_proto.h"
 #include "ylib.h"
-#include "yfscli_conf.h"
 #include "net_global.h"
 #include "sdfs_lib.h"
-#include "file_table.h"
-#include "chk_meta.h"
 #include "network.h"
 #include "dbg.h"
-#include "xattr.h"
 
 int yrecycle_fd;
 
@@ -460,118 +455,6 @@ int ly_removexattr(const char *path, const char *name)
         return 0;
 err_ret:
         return ret;
-}
-
-int ly_setrepnum(const char *path, int repnum)
-{
-        int ret;
-        uint32_t replica;
-
-again:
-        replica = (uint32_t)repnum;
-
-        ret = ly_setxattr(path, YFS_XATTR_REPLICA, (const void *)&replica,
-                          sizeof(uint32_t), USS_XATTR_DEFAULT);
-        if (ret) {
-                if (ret == EPIPE || ret == ETIMEDOUT || ret == ENOTCONN) {
-                        ret = network_connect_mds(0);
-                        if (ret == 0)
-                                goto again;
-
-                        ret = EAGAIN;
-                }
-
-                GOTO(err_ret, ret);
-        }
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-int ly_getrepnum(const char *path)
-{
-        int ret;
-        uint32_t replica;
-        size_t size;
-
-again:
-        replica = YFS_MIN_REP;
-        size = sizeof(uint32_t);
-
-        ret = ly_getxattr(path, YFS_XATTR_REPLICA, (void *)&replica, &size);
-        if (ret) {
-                if (ret == EPIPE || ret == ETIMEDOUT || ret == ENOTCONN) {
-                        ret = network_connect_mds(0);
-                        if (ret == 0)
-                                goto again;
-
-                        ret = EAGAIN;
-                }
-
-                GOTO(err_ret, ret);
-        }
-
-        ret = (int)replica;
-        return ret;
-err_ret:
-        return -ret;
-}
-
-int ly_setchklen(const char *path, int chklen)
-{
-        int ret;
-        uint32_t chunk;
-
-again:
-        chunk = (uint32_t)chklen;
-
-        ret = ly_setxattr(path, YFS_XATTR_CHKLEN, (const void *)&chunk,
-                          sizeof(uint32_t), USS_XATTR_DEFAULT);
-        if (ret) {
-                if (ret == EPIPE || ret == ETIMEDOUT || ret == ENOTCONN) {
-                        ret = network_connect_mds(0);
-                        if (ret == 0)
-                                goto again;
-
-                        ret = EAGAIN;
-                }
-
-                GOTO(err_ret, ret);
-        }
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-int ly_getchklen(const char *path)
-{
-        int ret;
-        uint32_t chunk;
-        size_t size;
-
-again:
-        chunk = SDFS_CHUNK_SPLIT;
-        size = sizeof(uint32_t);
-
-        ret = ly_getxattr(path, YFS_XATTR_CHKLEN, (void *)&chunk, &size);
-        if (ret) {
-                if (ret == EPIPE || ret == ETIMEDOUT || ret == ENOTCONN) {
-                        ret = network_connect_mds(0);
-                        if (ret == 0)
-                                goto again;
-
-                        ret = EAGAIN;
-                }
-
-                GOTO(err_ret, ret);
-        }
-
-        ret = (int)chunk;
-        return ret;
-err_ret:
-        return -ret;
 }
 
 #endif

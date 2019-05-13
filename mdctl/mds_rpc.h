@@ -3,8 +3,8 @@
 
 #include <sys/statvfs.h>
 
-#include "disk_proto.h"
 #include "md_proto.h"
+#include "yfs_md.h"
 
 typedef struct {
         nid_t nid;

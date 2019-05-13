@@ -18,7 +18,6 @@
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
 #include "network.h"
-#include "yfs_limit.h"
 #include "cds_rpc.h"
 #include "diskid.h"
 #include "disk.h"

@@ -6,13 +6,11 @@
 #define DBG_SUBSYS S_YFSLIB
 
 #include "sdfs_id.h"
-
 #include "md_lib.h"
 #include "chk_proto.h"
 #include "network.h"
 #include "net_global.h"
 #include "chk_proto.h"
-#include "file_table.h"
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
@@ -20,13 +18,8 @@
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
 #include "network.h"
-#include "yfs_limit.h"
 #include "cds_rpc.h"
-#include "worm_cli_lib.h"
 #include "main_loop.h"
-#include "posix_acl.h"
-#include "flock.h"
-#include "xattr.h"
 #include "md_proto.h"
 #include "dbg.h"
 

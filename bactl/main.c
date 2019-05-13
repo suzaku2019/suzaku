@@ -12,7 +12,6 @@
 
 #include "ylib.h"
 #include "get_version.h"
-#include "yfscds_conf.h"
 #include "configure.h"
 #include "ylog.h"
 #include "dbg.h"

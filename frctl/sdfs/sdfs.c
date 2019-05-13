@@ -13,13 +13,8 @@
 #include "md_lib.h"
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
-#include "worm_cli_lib.h"
-#include "posix_acl.h"
 #include "io_analysis.h"
-#include "flock.h"
-#include "attr_queue.h"
 #include "core.h"
-#include "xattr.h"
 #include "volume.h"
 #include "dbg.h"
 

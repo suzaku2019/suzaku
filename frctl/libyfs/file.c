@@ -4,19 +4,14 @@
 
 #define DBG_SUBSYS S_YFSLIB
 
-
 #include "md_lib.h"
 #include "chk_proto.h"
 #include "chk_proto.h"
-#include "file_table.h"
 #include "job_dock.h"
 #include "ylib.h"
 #include "net_global.h"
 #include "sdfs_lib.h"
-#include "yfs_limit.h"
 #include "dbg.h"
-#include "posix_acl.h"
-#include "xattr.h"
 
 #define YFS_FILE_ALLOC_INC 8
 

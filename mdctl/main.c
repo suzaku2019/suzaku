@@ -18,8 +18,6 @@
 #include "mds.h"
 #include "dbg.h"
 #include "fnotify.h"
-#include "sdfs_quota.h"
-#include "flock.h"
 #include "mds_main.h"
 
 static inline void usage()

@@ -18,10 +18,8 @@
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
 #include "network.h"
-#include "yfs_limit.h"
 #include "cds_rpc.h"
 #include "schedule.h"
-#include "xattr.h"
 #include "dbg.h"
 
 typedef struct {

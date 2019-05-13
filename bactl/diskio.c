@@ -14,9 +14,6 @@
 
 #define DBG_SUBSYS S_YFSCDS
 
-#include "yfs_conf.h"
-#include "yfscds_conf.h"
-#include "chk_meta.h"
 #include "md_proto.h"
 #include "ylib.h"
 #include "ynet_rpc.h"

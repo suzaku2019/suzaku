@@ -14,7 +14,6 @@
 #include "sysutil.h"
 #include "md_proto.h"
 #include "md_lib.h"
-#include "yfscds_conf.h"
 #include "net_global.h"
 #include "redis.h"
 #include "allocator.h"

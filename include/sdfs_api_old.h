@@ -99,10 +99,6 @@ extern int ly_utime(const char *path, uint32_t atime, uint32_t mtime);
 
 extern int ly_link2node(const char *path, fileid_t *fileid);
 
-extern int ly_setrepnum(const char *path, int repnum);
-extern int ly_getrepnum(const char *path);
-extern int ly_setchklen(const char *path, int chklen);
-extern int ly_getchklen(const char *path);
 extern int ly_getxattr(const char *path, const char *name, void *value, size_t *size);
 extern int ly_setxattr(const char *path, const char *name, const void *value, size_t size, int flags);
 extern int ly_removexattr(const char *path, const char *name);

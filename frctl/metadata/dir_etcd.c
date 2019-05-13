@@ -6,7 +6,6 @@
 
 #define DBG_SUBSYS S_YFSMDS
 
-#include "dir.h"
 #include "sdfs_conf.h"
 #include "net_global.h"
 #include "sdfs_macro.h"

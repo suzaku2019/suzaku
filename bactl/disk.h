@@ -5,11 +5,7 @@
 #include <semaphore.h>
 #include <hiredis/hiredis.h>
 
-#include "chk_meta.h"
-#include "file_proto.h"
-#include "ynet_rpc.h"
 #include "sdfs_conf.h"
-#include "disk_proto.h"
 #include "bmap.h"
 #include "sdfs_buffer.h"
 
