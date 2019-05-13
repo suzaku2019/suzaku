@@ -30,8 +30,8 @@ execute_process(COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tools/get_version.sh ${CMAKE
 
 find_package(BISON)
 find_package(FLEX)
-BISON_TARGET(MyBison ${CMAKE_CURRENT_SOURCE_DIR}/parser/lib/confy.y ${CMAKE_CURRENT_BINARY_DIR}/confy.c)
-FLEX_TARGET(MyFlex ${CMAKE_CURRENT_SOURCE_DIR}/parser/lib/confl.l ${CMAKE_CURRENT_BINARY_DIR}/confl.c)
+BISON_TARGET(MyBison ${CMAKE_CURRENT_SOURCE_DIR}/library/config/lib/confy.y ${CMAKE_CURRENT_BINARY_DIR}/confy.c)
+FLEX_TARGET(MyFlex ${CMAKE_CURRENT_SOURCE_DIR}/library/config/lib/confl.l ${CMAKE_CURRENT_BINARY_DIR}/confl.c)
 #add_executable(Foo main.cpp ${BISON_MyParser_OUTPUTS})
 #ADD_FLEX_BISON_DEPENDENCY(MyBison MyFlex)
 #set(CMAKE_BUILD_TYPE Release)
@@ -44,143 +44,128 @@ set(CMAKE_C_FLAGS "-W -Wall -DDEBUG -g -fPIC -Werror -Wno-implicit-fallthrough -
 set(CMAKE_C_LIBS sdfs pthread crypt crypto uuid ssl z m curl yajl hiredis)
 
 include_directories(
-    /usr/local/include
-    #/usr/include/tirpc/
-    #${CMAKE_CURRENT_SOURCE_DIR}/license/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl
-    ${CMAKE_CURRENT_SOURCE_DIR}/parser/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/config/include
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/include
     ${CMAKE_CURRENT_SOURCE_DIR}/mdctl
     ${CMAKE_CURRENT_SOURCE_DIR}/mdctl/mds
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs
     ${CMAKE_CURRENT_BINARY_DIR}/
 )
 
 add_library(sdfs SHARED
-    ${CMAKE_CURRENT_SOURCE_DIR}/parser/lib/configure.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/config/lib/configure.c
     ${CMAKE_CURRENT_BINARY_DIR}/confy.c
     ${CMAKE_CURRENT_BINARY_DIR}/confl.c
     ${CMAKE_CURRENT_BINARY_DIR}/confy.h
 
     #------ylib------
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/kv.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/timer.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/redis_util.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/worker.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/job_dock.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/config.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/auth.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/array_table.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/buffer.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ec_isa_l.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cmp.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ll.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/crc32.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/crcrs.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/daemon.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/dbg.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/hash.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/htab.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cache.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/job_tracker.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/lock.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mem.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mem_cache.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mem_hugepage.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/nls.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/nls/nls_cp936.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/path.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/skiplist.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/stat.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/str.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/sysutil.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/timer.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ylog.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/plock.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/tpool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/ytime.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/bmap.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/privilege.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/md5.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/analysis.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/mini_hashtb.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/bh.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/fnotify.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/nodectl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/removed.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/etcd.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/etcd-api.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/base64_urlsafe.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/base64.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/cJSON.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/aio.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/core.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/core_latency.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet_tcp.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet_connect_tcp.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corenet_maping.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/corerpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/cpuset.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/schedule.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/gettime.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/schedule_thread.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/schedule/variable.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/kv.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/timer.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/redis_util.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/worker.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/job_dock.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/config.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/auth.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/array_table.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/buffer.c
+    #${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/ec_isa_l.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/cmp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/ll.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/crc32.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/crcrs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/daemon.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/dbg.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/hash.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/htab.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/job_tracker.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/lock.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/mem.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/mem_cache.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/mem_hugepage.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/path.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/skiplist.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/stat.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/str.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/sysutil.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/timer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/ylog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/plock.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/tpool.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/ytime.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/bmap.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/privilege.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/md5.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/analysis.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/mini_hashtb.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/bh.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/fnotify.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/nodectl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/removed.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/etcd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/etcd-api.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/base64_urlsafe.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/base64.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ylib/lib/cJSON.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/aio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/core_latency.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/corenet.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/corenet_tcp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/corenet_connect_tcp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/corenet_maping.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/corerpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/cpuset.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/schedule.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/gettime.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/schedule_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/schedule/variable.c
 
     #------ynet------
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/nodeid.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sock_buffer.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sock_passive.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sock_tcp.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sock_udp.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sock_xnect.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sock_xmit.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/sock/sdevent.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_crc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_lib.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/network.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/maping.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_passive.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_table.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/heartbeat.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/xnect.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_xnect.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_xmit.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/net_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/conn.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/net/main_loop.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_lib.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/msgqueue.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_proto.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_passive.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_reply.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_xnect.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_request.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_request_old.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_reply_old.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_xmit.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ynet/rpc/rpc_table.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/nodeid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sock_buffer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sock_passive.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sock_tcp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sock_udp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sock_xnect.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sock_xmit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/sock/sdevent.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_crc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_events.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_lib.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/network.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/maping.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_passive.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_table.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/heartbeat.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/xnect.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_xnect.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_xmit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/net_rpc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/conn.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/net/main_loop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_lib.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/msgqueue.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_proto.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_passive.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_reply.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_xnect.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_request.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_xmit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/ynet/rpc/rpc_table.c
 
-    #------sdfs------
+    #------frctl------
 
-    #${CMAKE_CURRENT_SOURCE_DIR}/license/src/aes.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_co.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_pipeline.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_vol.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/redis_conn.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_attr.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/dir_etcd.c
@@ -200,7 +185,6 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/cds_rpc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_chunk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_chunk_recovery.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_dir.c
@@ -216,15 +200,10 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/raw.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/file_table.c
     ${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/yfs_lib.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/worm_cli_lib.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/quota.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/user.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/group.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/posix_acl.c
-    #${CMAKE_CURRENT_SOURCE_DIR}/yfs/libyfs/flock.c
 
-    #------cds------
+    #------bactl------
 
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/cds_rpc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/cds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_alloc.c
@@ -343,19 +322,6 @@ target_link_libraries(sdfs.perf ${CMAKE_C_LIBS})
 
 add_executable(sdfs.ls ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.ls.c)
 target_link_libraries(sdfs.ls ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.license ${YLICENSE_SRC_LIST})
-#target_link_libraries(sdfs.license ${CMAKE_C_LIBS})
-
-set (USS_USER_SRC
-	${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.user.c
-	${CMAKE_CURRENT_SOURCE_DIR}/ylib/lib/md5.c
-)
-#add_executable(sdfs.user ${USS_USER_SRC})
-#target_link_libraries(sdfs.user ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.group ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/uss.group.c)
-#target_link_libraries(sdfs.group ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.health ${CMAKE_CURRENT_SOURCE_DIR}/yfs/utils/sdfs.health.c)
 #target_link_libraries(sdfs.health ${CMAKE_C_LIBS})
