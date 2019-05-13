@@ -10,8 +10,8 @@
 #include "sdfs_lib.h"
 #include "dbg.h"
 
-#if 1
-int ly_readdir(const char *path, off_t offset, void **de, int *delen, int prog_type)
+#if 0
+int ly_rxeaddir(const char *path, off_t offset, void **de, int *delen, int prog_type)
 {
         int ret;
         fileid_t fileid;

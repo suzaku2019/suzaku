@@ -76,11 +76,13 @@ extern int ly_init_simple2(const char *name);
 extern void ly_set_daemon();
 
 #if 1
+#if 0
 extern int ly_readdir(const char *path, off_t offset, void **de, int *delen, int prog_type);
 extern int ly_readdirplus(const char *path, off_t offset, void **de, int *delen, int prog_type);
 
 extern int ly_readdirplus_with_filter(const char *path, off_t offset, void **de, int *delen,
                                       const filter_t *filter);
+#endif
 
 
 extern int ly_getattr(const char *path, struct stat *);
@@ -91,7 +93,6 @@ extern int ly_fidchmod(const fileid_t *fid,  mode_t mode);
 extern int ly_fidchown(const fileid_t *, uid_t uid, gid_t gid);
 extern int ly_unlink(const char *path);
 extern int ly_rename(const char *from, const char *to);
-extern int ly_link(const char *target, const char *link);
 extern int ly_rmdir(const char *path);
 extern int ly_statfs(const char *path, struct statvfs *vfs);
 extern int ly_opendir(const char *path);
@@ -99,6 +100,8 @@ extern int ly_utime(const char *path, uint32_t atime, uint32_t mtime);
 
 extern int ly_link2node(const char *path, fileid_t *fileid);
 
+extern int ly_setchklen(const char *path, int chklen);
+extern int ly_getchklen(const char *path);
 extern int ly_getxattr(const char *path, const char *name, void *value, size_t *size);
 extern int ly_setxattr(const char *path, const char *name, const void *value, size_t size, int flags);
 extern int ly_removexattr(const char *path, const char *name);
@@ -115,10 +118,6 @@ extern int ly_write(const char *path, const char *buf, size_t size, yfs_off_t of
 extern int ly_release(int fd);
 
 extern int ly_truncate(const char *path, off_t length);
-extern int ly_symlink(const char *link_target, const char *link_name);
-extern int ly_readlink(const char *link, char *buf, size_t *buflen);
-
-extern int ly_set_default_acl(const char *path, mode_t mode);
 #endif
 
 
@@ -137,17 +136,5 @@ extern int raw_symlink_plus(const char *link_target, const fileid_t *parent,
                        struct stat *st, const uid_t uid, const gid_t gid);
 
 extern int raw_printfile(fileid_t *fid, uint32_t _chkno);
-extern int raw_printfile1(fileid_t *fileid);
-extern int raw_is_dir(const fileid_t *fileid, int *is_dir);
-extern int raw_is_directory_empty(const fileid_t *fileid, int *is_empty);
-extern int raw_create_quota(quota_t *quota);
-extern int raw_get_quota(const fileid_t *quotaid, quota_t *quota);
-extern int raw_set_quotaid(const fileid_t *fileid, uint64_t quotaid);
-// extern int raw_list_quota(const quota_t *quota_owner,
-                          // quota_type_t quota_type,
-                          // quota_t **quota,
-                          // int *);
-extern int raw_remove_quota(const fileid_t *quotaid, const quota_t *quota);
-extern int raw_modify_quota(const fileid_t *quotaid, quota_t *quota, uint32_t modify_mask);
 
 #endif

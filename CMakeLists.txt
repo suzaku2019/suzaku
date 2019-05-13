@@ -307,14 +307,8 @@ target_link_libraries(sdfs.truncate ${CMAKE_C_LIBS})
 add_executable(sdfs.touch ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.touch.c)
 target_link_libraries(sdfs.touch ${CMAKE_C_LIBS})
 
-add_executable(sdfs.perf ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.perf.c)
-target_link_libraries(sdfs.perf ${CMAKE_C_LIBS})
-
-#add_executable(test_aio ${CMAKE_CURRENT_SOURCE_DIR}/test/src/test_aio.c ${CMAKE_CURRENT_SOURCE_DIR}/test/src/test_aio_lib.c)
-#target_link_libraries(test_aio ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.prof ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.prof.c)
-#target_link_libraries(sdfs.prof ${CMAKE_C_LIBS})
+#add_executable(sdfs.perf ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.perf.c)
+#target_link_libraries(sdfs.perf ${CMAKE_C_LIBS})
 
 add_executable(sdfs.ls ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.ls.c)
 target_link_libraries(sdfs.ls ${CMAKE_C_LIBS})
@@ -325,20 +319,11 @@ target_link_libraries(sdfs.ls ${CMAKE_C_LIBS})
 add_executable(sdfs.mon ${CMAKE_CURRENT_SOURCE_DIR}/utils/sdfs.mon.c)
 target_link_libraries(sdfs.mon ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.ln ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.ln.c)
-#target_link_libraries(sdfs.ln ${CMAKE_C_LIBS})
-
 add_executable(sdfs.rmdir ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.rmdir.c)
 target_link_libraries(sdfs.rmdir ${CMAKE_C_LIBS})
 
 add_executable(sdfs.rm ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.rm.c)
 target_link_libraries(sdfs.rm ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.cp ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.cp.c)
-#target_link_libraries(sdfs.cp ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.chkstat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chkstat.c)
-#target_link_libraries(sdfs.chkstat ${CMAKE_C_LIBS})
 
 add_executable(sdfs.stat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.stat.c)
 target_link_libraries(sdfs.stat ${CMAKE_C_LIBS})
@@ -346,56 +331,20 @@ target_link_libraries(sdfs.stat ${CMAKE_C_LIBS})
 add_executable(sdfs.chmod ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chmod.c)
 target_link_libraries(sdfs.chmod ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.clone ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.clone.c)
-#target_link_libraries(sdfs.clone ${CMAKE_C_LIBS})
-
 add_executable(sdfs.md5sum ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.md5sum.c)
 target_link_libraries(sdfs.md5sum ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.sysop ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.sysop.c)
-#target_link_libraries(sdfs.sysop ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.mdsdrop ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.mdsdrop.c)
-#target_link_libraries(sdfs.mdsdrop ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.cdstat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.cdstat.c)
-#target_link_libraries(sdfs.cdstat ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.ffc ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.ffc.c)
-#target_link_libraries(sdfs.ffc ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.hsm ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.hsm.c)
-#target_link_libraries(sdfs.hsm ${CMAKE_C_LIBS})
 
 #add_executable(sdfs.fallocate ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.fallocate.c)
 #target_link_libraries(sdfs.fallocate ${CMAKE_C_LIBS})
 
-#add_executable(sdfs.du ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.du.c)
-#target_link_libraries(sdfs.du ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.statvfs ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.statvfs.c)
-#target_link_libraries(sdfs.statvfs ${CMAKE_C_LIBS})
-
-#set (USS_WORM_SRC
-#        ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.worm.c
-#)
-
-#add_executable(sdfs.worm ${USS_WORM_SRC})
-#target_link_libraries(sdfs.worm ${CMAKE_C_LIBS})
-
 add_executable(sdfs.chown ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chown.c)
 target_link_libraries(sdfs.chown ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.quota ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.quota.c)
-#target_link_libraries(sdfs.quota ${CMAKE_C_LIBS})
-
-#add_executable(sdfs.share ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.share.c)
-#target_link_libraries(sdfs.share ${CMAKE_C_LIBS})
 
 set (USS_ADMIN_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.admin.c
     ${CMAKE_CURRENT_SOURCE_DIR}/utils/option.c
 )
+
 add_executable(sdfs.admin ${USS_ADMIN_SRC})
 target_link_libraries(sdfs.admin ${CMAKE_C_LIBS} hiredis)
 
@@ -407,49 +356,21 @@ install(TARGETS sdfs.frctl RUNTIME DESTINATION app/sbin)
 
 install(TARGETS sdfs.configdump RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.write RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.mv RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.zk RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.cat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.attr RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.objmv RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.mkdir RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.mkpool RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.truncate RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.touch RUNTIME DESTINATION app/bin)
-install(TARGETS sdfs.perf RUNTIME DESTINATION app/bin)
-# install(TARGETS sdfs.perf_mds RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.prof RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.ls RUNTIME DESTINATION app/bin)
 #install(TARGETS sdfs.health RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.mon RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.ln RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.rmdir RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.rm RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.cp RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.chkstat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.chmod RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.clone RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.md5sum RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.sysop RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.mdsdrop RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.ffc RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.hsm RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.fallocate RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.du RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.license RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.mdstat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.stat RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.cdstat RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.statvfs RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.admin RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.worm RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.chown RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.quota RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.share RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.user RUNTIME DESTINATION app/bin)
-#install(TARGETS sdfs.group RUNTIME DESTINATION app/bin)
-
-#install(TARGETS test_aio RUNTIME DESTINATION app/test)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/admin DESTINATION app/ FILE_PERMISSIONS OWNER_EXECUTE GROUP_EXECUTE WORLD_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION app/ FILE_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
@@ -463,9 +384,6 @@ ELSE()
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/sdfs.conf DESTINATION etc/)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/etc/redis.conf.tpl DESTINATION etc/)
 ENDIF()
-#install(TARGETS ../admin/utils.py RUNTIME DESTINATION admin/)
-#install(TARGETS ../admin/instence.py RUNTIME DESTINATION admin/)
-#install(TARGETS ../admin/node.py RUNTIME DESTINATION admin/)
 
 #execute_process(COMMAND ln -s CMAKE_INSTALL_PREFIX/app/admin/cluster.py CMAKE_INSTALL_PREFIX/app/bin/uss.cluster)
 
