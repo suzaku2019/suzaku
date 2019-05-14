@@ -35,7 +35,6 @@
 #include "main_loop.h"
 #include "dbg.h"
 
-extern int is_daemon;
 extern jobtracker_t *jobtracker;
 
 extern analysis_t *default_analysis;
@@ -273,35 +272,6 @@ int need_license_check(const char *proname)
         return ret;
 }
 
-#if 0
-int ly_license_init(const char *name)
-{
-#ifdef __CYGWIN__
-	return 0;
-#else
-	int ret;
-        if (gloconf.check_license){
-                if(need_license_check(name)){
-                        ret = uss_license_check(gloconf.workdir);
-                        if(ret)
-                                GOTO(err_ret, ret);
-                }
-        }
-        else
-                DINFO("license check off\n");
-
-        return 0;
-err_ret:
-        return ret;
-#endif
-}
-#endif
-
-void ly_set_daemon()
-{
-        is_daemon = 2;
-}
-
 int ly_prep(int daemon, const char *home, const char *logname, int64_t maxopenfile)
 {
         int ret, lockfd;
@@ -337,8 +307,6 @@ int ly_prep(int daemon, const char *home, const char *logname, int64_t maxopenfi
                         (void) ylog_init(YLOG_STDERR, "");
                         (void) daemonlize(0, gloconf.maxcore, NULL, -1, maxopenfile);
                 }
-
-                is_daemon = 1;
 
                 snprintf(path, MAX_PATH_LEN, "%s/status/status", home);
                 lockfd = daemon_lock(path);
@@ -759,7 +727,6 @@ int ly_init_simple2(const char *name)
                 GOTO(err_ret, ret);
 
         ng.live = 0;
-        is_daemon = 0;
 
 #if 0
         ret = ly_license_init(name);
@@ -785,7 +752,6 @@ int ly_init_simple(const char *name)
                 GOTO(err_ret, ret);
 
         ng.live = 0;
-        is_daemon = 0;
 
 retry:
         ret = network_connect_mds(0);
@@ -842,7 +808,7 @@ int sdfs_init_verbose(const char *name, int polling_core)
         ret = core_init(polling_core, CORE_FLAG_PASSIVE | CORE_FLAG_ACTIVE
                         | CORE_FLAG_PRIVATE);
         if (ret)
-                GOTO(err_ret, ret);
+                        GOTO(err_ret, ret);
 
         ret = part_init(PART_MDS | PART_FRCTL);
         if (ret)
@@ -857,7 +823,7 @@ err_ret:
         return ret;
 }
 
-int sdfs_init(const char *name, int polling_core)
+int sdfs_init(const char *name)
 {
         int ret;
 
@@ -865,9 +831,7 @@ int sdfs_init(const char *name, int polling_core)
         if(ret)
                 GOTO(err_ret, ret);
 
-        ly_set_daemon();
-        
-        ret = sdfs_init_verbose(name, polling_core);
+        ret = sdfs_init_verbose(name, 1);
         if (ret)
                 GOTO(err_ret, ret);
  

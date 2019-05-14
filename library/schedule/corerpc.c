@@ -370,6 +370,29 @@ err_ret:
         return ret;
 }
 
+int IO_FUNC corerpc_postwait1(const char *name, const coreid_t *coreid, const void *request,
+                              int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
+                              int msg_type, int msg_size, int timeout)
+{
+        int ret;
+
+        if (likely(ng.daemon)) {
+                ret = corerpc_postwait(name, coreid, request, reqlen,
+                                       wbuf, rbuf, msg_type, msg_size, timeout);
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+        } else {
+                ret = rpc_request_wait3(name, &coreid->nid, request, reqlen,
+                                        wbuf, rbuf, msg_type, msg_size, timeout);
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+        }
+
+        return 0;
+err_ret:
+        return ret;
+}
+
 static int __corerpc_request_handler(corerpc_ctx_t *ctx, const ynet_net_head_t *head,
                                  buffer_t *buf)
 {

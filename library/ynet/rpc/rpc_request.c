@@ -360,7 +360,7 @@ err_ret:
 //for read
 int rpc_request_wait2(const char *name, const nid_t *nid, const void *request,
                       int reqlen, buffer_t *rbuf, int msg_type,
-                     int priority, int timeout)
+                      int priority, int timeout)
 {
         int ret;
         net_handle_t nh;
@@ -369,6 +369,26 @@ int rpc_request_wait2(const char *name, const nid_t *nid, const void *request,
 
         id2nh(&nh, nid);
         ret = __rpc_request_wait(name, &nh, request, reqlen, NULL, rbuf, msg_type, priority, timeout);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+int rpc_request_wait3(const char *name, const nid_t *nid, const void *request,
+                      int reqlen, const buffer_t *wbuf, buffer_t *rbuf, int msg_type,
+                      int priority, int timeout)
+{
+        int ret;
+        net_handle_t nh;
+
+        YASSERT(rbuf);
+
+        id2nh(&nh, nid);
+        ret = __rpc_request_wait(name, &nh, request, reqlen, wbuf, rbuf,
+                                 msg_type, priority, timeout);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 

@@ -32,8 +32,6 @@ uint64_t nofile_max;
 
 #define YFS_PID_DIR "/dev/shm/uss/pid"
 
-int is_daemon = -1;
-
 int get_nodeid(uuid_t id, const char *nodeid_file)
 {
         int ret, fd, retry = 0;

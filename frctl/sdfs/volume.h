@@ -20,10 +20,9 @@ int volume_write(volume_t *volume, const buffer_t *_buf, uint32_t size, uint64_t
 int volume_read(volume_t *volume, buffer_t *_buf, uint32_t size, uint64_t offset);
 int volume_open(volume_t **_volume, const fileid_t *fileid);
 void volume_close(volume_t **_volume);
+int volume_chunk_iterator(volume_t *volume, const chkid_t *chkid, func1_t func, void *arg);
 
 int volume_write1(volume_t *volume, const buffer_t *_buf, uint32_t size, uint64_t offset);
 int volume_read1(volume_t *volume, buffer_t *_buf, uint32_t size, uint64_t offset);
-int volume_open1(volume_t **_volume, const fileid_t *fileid);
-void volume_close1(volume_t **_volume);
 
 #endif

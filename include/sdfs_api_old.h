@@ -73,17 +73,8 @@ extern int ly_update_status(const char *status, int step);
 extern int ly_destroy(void);
 extern int ly_init_simple(const char *name);
 extern int ly_init_simple2(const char *name);
-extern void ly_set_daemon();
 
 #if 1
-#if 0
-extern int ly_readdir(const char *path, off_t offset, void **de, int *delen, int prog_type);
-extern int ly_readdirplus(const char *path, off_t offset, void **de, int *delen, int prog_type);
-
-extern int ly_readdirplus_with_filter(const char *path, off_t offset, void **de, int *delen,
-                                      const filter_t *filter);
-#endif
-
 
 extern int ly_getattr(const char *path, struct stat *);
 extern int ly_mkdir(const char *path, const ec_t *, mode_t);

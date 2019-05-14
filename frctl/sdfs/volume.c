@@ -193,7 +193,7 @@ err_ret:
         return ret;
 }
 
-int volume_open(volume_t **_volume, const fileid_t *fileid)
+static int __volume_open(volume_t **_volume, const fileid_t *fileid)
 {
         int ret;
         volume_t *volume;
@@ -207,7 +207,6 @@ int volume_open(volume_t **_volume, const fileid_t *fileid)
                 GOTO(err_ret, ret);
 
         md2ec((void *)&md, &ec);
-        
         ret = ymalloc((void **)&volume, sizeof(*volume));
         if (ret)
                 GOTO(err_ret, ret);
@@ -248,7 +247,7 @@ err_ret:
         return ret;
 }
 
-void volume_close(volume_t **_volume)
+static void __volume_close(volume_t **_volume)
 {
         int ret;
         volume_t *volume;
@@ -430,7 +429,7 @@ err_ret:
         return ret;
 }
 
-static int __volume_open(va_list ap)
+static int __volume_open_va(va_list ap)
 {
         volume_t **_volume = va_arg(ap, volume_t **);
         const fileid_t *fileid = va_arg(ap, fileid_t *);
@@ -441,21 +440,27 @@ static int __volume_open(va_list ap)
 }
 
 
-int volume_open1(volume_t **_volume, const fileid_t *fileid)
+int volume_open(volume_t **_volume, const fileid_t *fileid)
 {
         int ret;
 
-        ret = core_request(0, -1, "volume_open1",
-                           __volume_open, _volume, fileid);
-        if (ret)
-                GOTO(err_ret, ret);
+        if (likely(core_self())) {
+                ret = __volume_open(_volume, fileid);
+                if (ret)
+                        GOTO(err_ret, ret);
+        } else {
+                ret = core_request(0, -1, "volume_open1",
+                                   __volume_open_va, _volume, fileid);
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
 
         return 0;
 err_ret:
         return ret;
 }
 
-static int __volume_close(va_list ap)
+static int __volume_close_va(va_list ap)
 {
         volume_t **_volume = va_arg(ap, volume_t **);
 
@@ -466,14 +471,18 @@ static int __volume_close(va_list ap)
         return 0;
 }
 
-void volume_close1(volume_t **_volume)
+void volume_close(volume_t **_volume)
 {
         int ret;
 
-        ret = core_request(0, -1, "volume_close1",
-                           __volume_close, _volume);
-        if (ret)
-                UNIMPLEMENTED(__DUMP__);
+        if (likely(core_self())) {
+                __volume_close(_volume);
+        } else {
+                ret = core_request(0, -1, "volume_close1",
+                                   __volume_close_va, _volume);
+                if (ret)
+                        UNIMPLEMENTED(__DUMP__);
+        }
 }
 
 static int __volume_write(va_list ap)
@@ -530,3 +539,78 @@ err_ret:
         return ret;
 }
 
+static int __volume_chunk_iterator(volume_t *volume, const chkid_t *_chkid, func1_t func, void *arg)
+{
+        int ret;
+        chkinfo_t *chkinfo;
+        char _chkinfo[CHKINFO_MAX];
+        chkid_t chkid;
+        chkidx_t begin, end;
+
+        chkid = *_chkid;
+        if (_chkid->type == ftype_sub) {
+                chkid.type = ftype_raw;
+                begin = _chkid->idx * PA_ITEM_COUNT * PA_ITEM_COUNT;
+                end = _get_chknum(volume->size, volume->real_split);
+                end = end < (begin + PA_ITEM_COUNT) ? end : (begin + PA_ITEM_COUNT);
+        } else if (_chkid->type == ftype_file) {
+                chkid.type = ftype_sub;
+                begin = _chkid->idx * PA_ITEM_COUNT;
+                end = _get_chknum(_get_chknum(volume->size, volume->real_split), PA_ITEM_COUNT);
+                end = end < (begin + PA_ITEM_COUNT) ? end : (begin + PA_ITEM_COUNT);
+        } else {
+                UNIMPLEMENTED(__DUMP__);
+        }
+
+        chkinfo = (void *)_chkinfo;
+        for (chkidx_t i = begin; i < end; i++) {
+                chkid.idx = i;
+                
+                ret = md_chunk_load(&chkid, chkinfo);
+                if (ret) {
+                        if (ret == ENOENT) {
+                                continue;
+                        } else
+                                GOTO(err_ret, ret);
+                }
+
+                func(arg, chkinfo);
+        }
+        
+        return 0;
+err_ret:
+        return ret;
+}
+
+static int __volume_chunk_iterator_va(va_list ap)
+{
+        volume_t *volume = va_arg(ap, volume_t *);
+        const chkid_t *chkid = va_arg(ap, chkid_t *);
+        func1_t func = va_arg(ap, func1_t);
+        void *arg = va_arg(ap, void *);
+
+        va_end(ap);
+
+        return __volume_chunk_iterator(volume, chkid, func, arg);
+}
+
+int volume_chunk_iterator(volume_t *volume, const chkid_t *chkid, func1_t func, void *arg)
+{
+        int ret;
+
+        if (likely(core_self())) {
+                ret = __volume_chunk_iterator(volume, chkid, func, arg);
+                if (ret) {
+                        GOTO(err_ret, ret);
+                }
+        } else {
+                ret = core_request(0, -1, "volume_chunk_iterator",
+                                   __volume_chunk_iterator_va, volume, chkid, func, arg);
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
+
+        return 0;
+err_ret:
+        return ret;
+}

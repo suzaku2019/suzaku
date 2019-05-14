@@ -91,10 +91,12 @@ typedef struct {
         uint64_t snapvers;
 } volid_t;
 
+typedef uint32_t chkidx_t;
+
 typedef struct {
         uint64_t id;
         uint64_t poolid;
-        uint32_t idx; /*chunk idx*/
+        chkidx_t idx; /*chunk idx*/
         uint16_t type;
         uint16_t __pad__;
 } chkid_t;

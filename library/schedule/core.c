@@ -312,7 +312,7 @@ int core_init(int polling_core, int flag)
 {
         int ret, i;
         core_t *core = NULL;
-
+        
         ret = cpuset_init(polling_core);
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);

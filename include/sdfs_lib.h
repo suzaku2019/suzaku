@@ -161,8 +161,8 @@ typedef struct {
 } sdfs_ctx_t;
 
 /* yfs_lib.c */
-int sdfs_init_verbose(const char *name, int redis_conn);
-int sdfs_init(const char *name, int polling_core);
+int sdfs_init_verbose(const char *name, int polling_core);
+int sdfs_init(const char *name);
 int sdfs_connect(const char *vol, sdfs_ctx_t **ctx);
 void sdfs_disconnect(sdfs_ctx_t *ctx);
 int sdfs_mkpool(const char *name, const ec_t *ec, mode_t mode, fileid_t *_fileid);

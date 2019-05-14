@@ -79,17 +79,11 @@ int main(int argc, char *argv[])
 
         dbg_info(0);
 
-#if 0
-        ret = ly_init_simple(prog);
-        if (ret)
-                GOTO(err_ret, ret);
-#else
-        ret = sdfs_init("read", 1);
+        ret = sdfs_init("read");
         if (ret) {
                 fprintf(stderr, "sdfs_init() %s\n", strerror(ret));
                 exit(1);
         }
-#endif
 
         ret = part_init(PART_MDS | PART_FRCTL);
         if (ret)

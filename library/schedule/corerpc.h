@@ -49,6 +49,9 @@ void corerpc_register(int type, net_request_handler handler, void *context);
 int corerpc_postwait(const char *name, const coreid_t *coreid, const void *request,
                      int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
                      int msg_type, int msg_size, int timeout);
+int corerpc_postwait1(const char *name, const coreid_t *coreid, const void *request,
+                              int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
+                              int msg_type, int msg_size, int timeout);
 
 // sockid-based
 int corerpc_send_and_wait(void *ctx, const char *name, const sockid_t *sockid,

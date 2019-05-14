@@ -57,19 +57,11 @@ int main(int argc, char *argv[])
 
         dbg_info(0);
 
-#if 0
-        ret = ly_init_simple("ywrite");
-        if (ret) {
-                fprintf(stderr, "ly_init() %s\n", strerror(ret));
-                exit(1);
-        }
-#else
-        ret = sdfs_init("write", 1);
+        ret = sdfs_init("write");
         if (ret) {
                 fprintf(stderr, "sdfs_init() %s\n", strerror(ret));
                 exit(1);
         }
-#endif
 
         ret = part_init(PART_MDS | PART_FRCTL);
         if (ret)

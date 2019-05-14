@@ -165,7 +165,7 @@ static int __cds_srv_read(const sockid_t *sockid, const msgid_t *msgid, buffer_t
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        if (sockid->type == SOCKID_CORENET) {
+        if (likely(sockid->type == SOCKID_CORENET)) {
                 DBUG("corenet read\n");
                 corerpc_reply1(sockid, msgid, &reply);
         } else {
@@ -282,7 +282,7 @@ static int __cds_srv_write(const sockid_t *sockid, const msgid_t *msgid, buffer_
                 GOTO(err_ret, ret);
         }
 
-        if (sockid->type == SOCKID_CORENET) {
+        if (likely(sockid->type == SOCKID_CORENET)) {
                 DBUG("corenet write\n");
                 corerpc_reply(sockid, msgid, NULL, 0);
         } else {
@@ -317,7 +317,6 @@ int cds_rpc_write(const diskid_t *diskid, const io_t *io,
         ANALYSIS_BEGIN(0);
 
         YASSERT(_buf->len == io->size);
-        //YASSERT(io->offset <= YFS_CHK_LEN_MAX);
 
         req = (void *)buf;
         req->op = CDS_WRITE;

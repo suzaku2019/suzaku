@@ -32,16 +32,13 @@ def usage():
            "    stat\n"
            "    attr\n"
            "    cat\n"
-           "    chmod\n"
-           "    chown\n"
            "    ln\n"
            "    mv\n"
            "    rmdir\n"
            "    truncate\n"
            "    write\n"
+           "    chkstat\n"
            "admin ops:\n"
-           "    user\n"
-           "    group\n"
            "    disk\n"
            "    health\n"
            "    mon\n"
@@ -49,16 +46,18 @@ def usage():
 
 
 def is_c_type(cmd):
-    lst = ['mkpool', 'mkdir', 'ls', 'touch', 'stat', 'attr', 'cat', 'chmod',
-           'chown', 'ln', 'mv', 'rmdir', 'truncate', 'write'
-           'user', 'group', 'worm', 'share', 'health']
+    lst = ['mkpool', 'mkdir', 'ls', 'touch', 'stat', 'attr', 'cat',
+           'ln', 'mv', 'rmdir', 'truncate', 'write',
+           'chkstat', 'health']
     if cmd in lst:
         return True
     else:
         return False
 
 def run_c_type(cmd, argv):
-    array = ["sdfs." + cmd] + argv
+    from config import Config
+    config = Config()
+    array = ["%s/app/bin/sdfs.%s" % (config.home, cmd)] + argv
 
     c = str(array)[1:-1].replace(',', ' ')
     os.system(c)

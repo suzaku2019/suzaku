@@ -44,7 +44,7 @@ typedef enum {
 typedef struct {
         uint32_t op;
         uint32_t buflen;
-        chkid_t  chkid;
+        chkid_t chkid;
         char buf[0];
 } msg_t;
 
@@ -513,13 +513,38 @@ err_ret:
         return ret;
 }
 
+static int __pa_srv_get__(va_list ap)
+{
+        const chkid_t *chkid = va_arg(ap, const chkid_t *);
+        chkinfo_t *chkinfo = va_arg(ap, chkinfo_t *);
+
+        va_end(ap);
+        
+        return pa_srv_get(chkid, chkinfo);
+}
+
+static int __pa_srv_get(const coreid_t *coreid, const chkid_t *chkid,
+                                     chkinfo_t *chkinfo)
+{
+        int ret;
+
+        ret = core_request(coreid->idx, -1, __FUNCTION__,
+                           __pa_srv_get__, chkid, chkinfo);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        return 0;
+err_ret:
+        return ret;
+}
+
 static int __mds_srv_paget(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
 {
         int ret;
         msg_t *req;
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
         uint32_t buflen;
-        const chkid_t *chkid;
+        const coreid_t *coreid;
         chkinfo_t *chkinfo;
         char _chkinfo[CHKINFO_MAX];
         const nid_t *nid;
@@ -533,18 +558,28 @@ static int __mds_srv_paget(const sockid_t *sockid, const msgid_t *msgid, buffer_
 
         _opaque_decode(req->buf, buflen,
                        &nid, NULL,
-                       &chkid, NULL,
+                       &coreid, NULL,
                        NULL);
 
-        DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(chkid));
+        DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(&req->chkid));
         
         chkinfo = (void *)_chkinfo;
-        ret = pa_srv_get(chkid, chkinfo);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
+        if (likely(sockid->type == SOCKID_CORENET)) {
+                ret = pa_srv_get(&req->chkid, chkinfo);
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
         
-        DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
-        corerpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
+                corerpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
+        } else {
+                ret = __pa_srv_get(coreid, &req->chkid, chkinfo);
+                if (unlikely(ret)) {
+                        GOTO(err_ret, ret);
+                }
+
+                rpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
+        }
+
+        DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(&req->chkid));
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -561,7 +596,6 @@ int mds_rpc_paget(const nid_t *nid, const chkid_t *chkid, chkinfo_t *chkinfo)
         uint32_t count;
         msg_t *req;
         coreid_t coreid;
-        buffer_t rbuf;
 
         DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         
@@ -579,22 +613,34 @@ int mds_rpc_paget(const nid_t *nid, const chkid_t *chkid, chkinfo_t *chkinfo)
 
         req = (void *)buf;
         req->op = MDS_PAGET;
+        req->chkid = *chkid;
         _opaque_encode(&req->buf, &count,
                        nid, sizeof(*nid),
-                       chkid, sizeof(*chkid),
+                       &coreid, sizeof(coreid),
                        NULL);
 
         req->buflen = count;
 
-        mbuffer_init(&rbuf, 0);
-        ret = corerpc_postwait("mds_rpc_paget", &coreid,
-                               req, sizeof(*req) + count,
-                               NULL, &rbuf,
-                               MSG_MDS_CORE, 0, _get_timeout());
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
+        if (likely(ng.daemon)) {
+                buffer_t rbuf;
+                mbuffer_init(&rbuf, 0);
+                ret = corerpc_postwait("mds_rpc_paget", &coreid,
+                                       req, sizeof(*req) + count,
+                                       NULL, &rbuf,
+                                       MSG_MDS_CORE, 0, _get_timeout());
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
 
-        mbuffer_popmsg(&rbuf, chkinfo, rbuf.len);
+                mbuffer_popmsg(&rbuf, chkinfo, rbuf.len);
+        } else {
+                ret = rpc_request_wait("range_rpc_chunk_getinfo", &coreid.nid,
+                                       req, sizeof(*req) + count,
+                                       chkinfo, NULL,
+                                       MSG_MDS, 0, _get_timeout());
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+        }
+
         DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
         
         ANALYSIS_QUEUE(0, IO_WARN, NULL);
