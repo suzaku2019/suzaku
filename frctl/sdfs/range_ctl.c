@@ -328,6 +328,21 @@ err_ret:
         return ret;
 }
 
+STATIC int __range_ctl_rec_rdlock(range_entry_t *ent, const chkid_t *chkid)
+{
+        return plock_rdlock(&ent->record_lock[chkid->idx % VOL_LOCK]);
+}
+
+STATIC int __range_ctl_rec_wrlock(range_entry_t *ent, const chkid_t *chkid)
+{
+        return plock_wrlock(&ent->record_lock[chkid->idx % VOL_LOCK]);
+}
+
+STATIC void __range_ctl_rec_unlock(range_entry_t *ent, const chkid_t *chkid)
+{
+        plock_unlock(&ent->record_lock[chkid->idx % VOL_LOCK]);
+}
+
 STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
                                  int op, io_token_t *token, int flags)
 {
@@ -335,7 +350,7 @@ STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
         chunk_t *chunk;
 
         idx = chkid->idx % RANGE_ITEM_COUNT;
-        ret = plock_wrlock(&ent->record_lock[chkid->idx % VOL_LOCK]);
+        ret = __range_ctl_rec_wrlock(ent, chkid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -361,11 +376,11 @@ retry:
                 }
         }
         
-        plock_unlock(&ent->record_lock[chkid->idx % VOL_LOCK]);
+        __range_ctl_rec_unlock(ent, chkid);
 
         return 0;
 err_lock:
-        plock_unlock(&ent->record_lock[chkid->idx % VOL_LOCK]);
+        __range_ctl_rec_unlock(ent, chkid);
 err_ret:
         return ret;
 }
@@ -397,24 +412,56 @@ err_ret:
         return ret;
 }
 
-static int __range_ctl_get_token1(va_list ap)
+STATIC int __range_ctl_chunk_recovery(range_entry_t *ent, const chkid_t *chkid)
 {
-        const chkid_t *chkid = va_arg(ap, const chkid_t *);
-        int op = va_arg(ap, int);
-        io_token_t *token = va_arg(ap, io_token_t *);
+        int ret, idx;
+        chunk_t *chunk;
 
-        va_end(ap);
+        idx = chkid->idx % RANGE_ITEM_COUNT;
+        ret = __range_ctl_rec_wrlock(ent, chkid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        if (unlikely(ent->chunk[idx] == NULL)) {
+                ret = __range_ctl_chunk_load(chkid, &ent->ec,
+                                             &ent->chunk[idx], 0);
+                if (unlikely(ret))
+                        GOTO(err_lock, ret);
+        }
+
+        chunk = ent->chunk[idx];
+        ret = chunk_recovery(chunk);
+        if (unlikely(ret)) {
+                GOTO(err_lock, ret);
+        }
         
-        return range_ctl_get_token(chkid, op, token);
+        __range_ctl_rec_unlock(ent, chkid);
+
+        return 0;
+err_lock:
+        __range_ctl_rec_unlock(ent, chkid);
+err_ret:
+        return ret;
 }
 
-int range_ctl_get_token1(const coreid_t *coreid, const chkid_t *chkid, int op,
-                         io_token_t *token)
+int range_ctl_chunk_recovery(const chkid_t *chkid)
 {
         int ret;
+        range_ctl_t *range_ctl = variable_get(VARIABLE_RANGE_SRV);
+        chkid_t rangeid;
+        range_entry_t *ent;
 
-        ret = core_request(coreid->idx, -1, __FUNCTION__,
-                           __range_ctl_get_token1, chkid, op, token);
+        cid2rid(chkid, &rangeid);
+
+        ret = __range_ctl_entry(range_ctl, &rangeid, &ent);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = ringlock_check(chkid, RINGLOCK_FRCTL, 0, &ent->token);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ret = __range_ctl_chunk_recovery(ent, chkid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -422,4 +469,3 @@ int range_ctl_get_token1(const coreid_t *coreid, const chkid_t *chkid, int op,
 err_ret:
         return ret;
 }
-

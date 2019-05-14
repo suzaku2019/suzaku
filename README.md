@@ -39,21 +39,20 @@ Configuration
 
     update hosts, for example:
 
-    192.168.140.31 auto1.host155.vmnode31
-    192.168.140.32 auto1.host155.vmnode32
-    192.168.140.33 auto1.host155.vmnode33
+    192.168.140.1 node1
+    192.168.140.2 node2
+    192.168.140.3 node3
 
 
 Create Cluster
 ===========================================================
 
-    /opt/sdfs/app/admin/cluster.py sshkey --hosts auto1.host155.vmnode31,auto1.host155.vmnode32,auto1.host155.vmnode33
-    /opt/sdfs/app/admin/cluster.py create --hosts auto1.host155.vmnode31,auto1.host155.vmnode32,auto1.host155.vmnode33
+    /opt/sdfs/app/admin/cluster.py sshkey --hosts node1,node2,node3
+    /opt/sdfs/app/admin/cluster.py create --hosts node1,node2,node3
 
 Create Pool
 ===========================================================
     sdfs mkpool default
-
 
 Add disk
 ===========================================================

@@ -15,7 +15,7 @@ site_count = 0
 rack_count = 0
 host_count = 0
 
-def generate_docker_list(s_count=1, r_count=1, h_count=1):
+def generate_docker_list(s_count=1, r_count=1, h_count=4):
     host_list = []
 
     global site_count

@@ -37,7 +37,7 @@ static int __vs_chunk_connect(vs_range_t *range, const chkid_t *chkid, uint32_t 
                 goto out;
         }
 
-        ret = range_location(chkid, &range->coreid);
+        ret = range_chunk_location(chkid, &range->coreid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 

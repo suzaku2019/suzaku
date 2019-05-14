@@ -543,3 +543,16 @@ err_lock:
 err_ret:
         return ret;
 }
+
+int chunk_recovery(chunk_t *chunk)
+{
+        int ret;
+
+        ret = __chunk_session_check(chunk);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        return 0;
+err_ret:
+        return ret;
+}

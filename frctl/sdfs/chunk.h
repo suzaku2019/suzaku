@@ -117,6 +117,8 @@ int chunk_replica_read(const io_token_t *token, io_t *io);
 
 int chunk_replica_recovery(chunk_t *chunk);
 
+int chunk_recovery_sync(const chkinfo_t *chkinfo);
+
 int chunk_update(chunk_t *chunk, const chkinfo_t *chkinfo);
 int chunk_write(chunk_t *chunk, io_t *io);
 int chunk_read(chunk_t *chunk, io_t *io);
@@ -124,5 +126,6 @@ int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo,
                const ltoken_t *ltoken, const ec_t *ec, int flag);
 void chunk_close(chunk_t **_chunk);
 int chunk_get_token(chunk_t *chunk, int op, io_token_t *token);
+int chunk_recovery(chunk_t *chunk);
 
 #endif

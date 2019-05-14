@@ -8,6 +8,7 @@
 #include "sdfs_id.h"
 #include "ylib.h"
 #include "md_lib.h"
+#include "md_proto.h"
 #include "chk_proto.h"
 #include "network.h"
 #include "net_global.h"
@@ -171,48 +172,36 @@ err_ret:
 
 int chunk_replica_recovery(chunk_t *chunk)
 {
-        (void) chunk;
-
-        UNIMPLEMENTED(__DUMP__);
-
-        return 0;
-#if 0
         int ret, repmin, i;
         fileid_t fileid;
-        fileinfo_t md;
         chkinfo_t *chkinfo;
         char _chkinfo[CHKINFO_SIZE(YFS_CHK_REP_MAX)];
-        time_t begin, now;
         reploc_t *reploc;
+        chkid_t *chkid = &chunk->chkinfo->chkid;
+        const ec_t *ec = &chunk->ec;
 
         DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         
         chkinfo = (void *)_chkinfo;
         cid2fid(&fileid, chkid);
-        ret = md_getattr(NULL, &fileid, (void *)&md);
-        if (ret)
-                GOTO(err_ret, ret);
 
-        repmin = (md.plugin != PLUGIN_NULL) ? md.k : 1;
-
-        begin = gettime();
-        ret = klock(NULL, chkid, 20, 0);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-        
+        repmin = (ec->plugin != PLUGIN_NULL) ? ec->k : 1;
         ret = md_chunk_newdisk(chkid, chkinfo, repmin, NEWREP_NORMAL);
         if (ret) {
-                GOTO(err_lock, ret);
+                GOTO(err_ret, ret);
         }
 
-        if (md.plugin == PLUGIN_NULL) {
-                ret = __sdfs_chunk_sync(&md, chkinfo);
+        if (ec->plugin == PLUGIN_NULL) {
+                ret = chunk_recovery_sync(chkinfo);
                 if (ret)
-                        GOTO(err_lock, ret);
+                        GOTO(err_ret, ret);
         } else {
-                ret = __sdfs_chunk_sync_ec(&md, chkinfo);
+                UNIMPLEMENTED(__DUMP__);
+#if 0
+                ret = chunk_sync_ec(&md, chkinfo);
                 if (ret)
-                        GOTO(err_lock, ret);
+                        GOTO(err_ret, ret);
+#endif
         }
 
         for (i = 0; i < (int)chkinfo->repnum; i++) {
@@ -223,28 +212,15 @@ int chunk_replica_recovery(chunk_t *chunk)
                 DBUG("status %u\n", reploc->status);
         }
 
-        now = gettime();
-        if (now - begin > 10) {
-                ret = ETIMEDOUT;
-                GOTO(err_lock, ret);
-        }
-        
         ret = md_chunk_update(chkinfo);
         if (ret)
-                GOTO(err_lock, ret);
-        
-        ret = kunlock(NULL, chkid);
-        if (unlikely(ret))
                 GOTO(err_ret, ret);
-
+        
         DINFO("recovery "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
         
         return 0;
-err_lock:
-        kunlock(NULL, chkid);
 err_ret:
         DWARN("recovery "CHKID_FORMAT" fail\n", CHKID_ARG(chkid));
         return ret;
-#endif
 }
 

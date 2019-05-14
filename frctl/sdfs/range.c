@@ -30,7 +30,7 @@
 
 #if 1
 
-int range_location(const chkid_t *chkid, coreid_t *coreid)
+int range_chunk_location(const chkid_t *chkid, coreid_t *coreid)
 {
         return part_location(chkid, PART_FRCTL, coreid);
 }
@@ -52,20 +52,19 @@ err_ret:
         return ret;
 }
 
-#if 0
-int range_get_token(const chkid_t *chkid, int op, io_token_t *token)
+int range_chunk_recovery(const chkid_t *chkid)
 {
         int ret;
-        nid_t nid;
+        coreid_t coreid;
 
-        ret = range_location(chkid, &nid);
+        ret = range_chunk_location(chkid, &coreid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        if (net_islocal(&nid)) {
-                ret = range_ctl_get_token(chkid, op, token);
+        if (core_islocal(&coreid)) {
+                ret = range_ctl_chunk_recovery(chkid);
         } else {
-                ret = range_rpc_get_token(&nid, chkid, op, token);
+                ret = range_rpc_chunk_recovery(&coreid, chkid);
         }
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -74,6 +73,5 @@ int range_get_token(const chkid_t *chkid, int op, io_token_t *token)
 err_ret:
         return ret;
 }
-#endif
 
 #endif
