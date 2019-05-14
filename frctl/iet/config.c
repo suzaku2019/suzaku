@@ -1261,24 +1261,13 @@ static int sdfs_rescan_lun(struct iscsi_conn *conn)
 
 static int sdfs_iscsi_init()
 {
-        int ret, retry = 0;
+        int ret;
 
         __iqn = sanconf.iqn;
 
         if (!strlen(__iqn)) {
                 ret = EINVAL;
                 GOTO(err_ret, ret);
-        }
-
-retry1:
-        ret = network_connect_mds(1);
-        if (unlikely(ret)) {
-                if (ret == ENONET || ret == EAGAIN) {
-                        USLEEP_RETRY(err_ret, ret, retry1, retry,
-                                     mdsconf.master_timeout + mdsconf.master_timeout / 2,
-                                     (1000 * 1000));
-                } else
-                        GOTO(err_ret, ret);
         }
 
         DINFO("iqn: %s\n", __iqn);

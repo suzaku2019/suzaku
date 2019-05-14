@@ -222,17 +222,6 @@ int cds_init(const char *home)
         if (ret)
                 GOTO(err_ret, ret);
         
-retry:
-        ret = network_connect_mds(1);
-        if (ret) {
-                ret = _errno(ret);
-                if (ret == EAGAIN) {
-                        sleep(5);
-                        goto retry;
-                } else
-                        GOTO(err_ret, ret);
-        }
-
         ret = bh_register("chunk_recycle", chunk_cleanup, NULL, (60));
         if (ret)
                 GOTO(err_ret, ret);
@@ -319,9 +308,12 @@ int cds_run(void *args)
         if (ret)
                 GOTO(err_ret, ret);
 
+        network_connect_mds(1);
+        
         while (cds_info.running) { //we got nothing to do here
                 sleep(1);
 
+                network_connect_mds(0);
 #if 0
                 if (time(NULL) % 10 == 0) {
                         DINFO("latency %ju\n", core_latency_get());

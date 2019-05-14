@@ -852,17 +852,6 @@ int sdfs_init_verbose(const char *name, int polling_core)
         if (ret)
                 GOTO(err_ret, ret);
         
-retry:
-        ret = network_connect_mds(0);
-        if (ret) {
-                ret = _errno(ret);
-                if (ret == EAGAIN) {
-                        sleep(5);
-                        goto retry;
-                } else
-                        GOTO(err_ret, ret);
-        }
-
         return 0;
 err_ret:
         return ret;
@@ -881,6 +870,17 @@ int sdfs_init(const char *name, int polling_core)
         ret = sdfs_init_verbose(name, polling_core);
         if (ret)
                 GOTO(err_ret, ret);
+ 
+retry:
+        ret = network_connect_mds(0);
+        if (ret) {
+                ret = _errno(ret);
+                if (ret == EAGAIN) {
+                        sleep(5);
+                        goto retry;
+                } else
+                        GOTO(err_ret, ret);
+        }
 
         return 0;
 err_ret:

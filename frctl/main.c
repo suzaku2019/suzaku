@@ -103,17 +103,6 @@ int frctl_srv(void *args)
         if (ret)
                 GOTO(err_ret, ret);
         
-retry:
-        ret = network_connect_mds(0);
-        if (ret) {
-                ret = _errno(ret);
-                if (ret == EAGAIN) {
-                        sleep(5);
-                        goto retry;
-                } else
-                        GOTO(err_ret, ret);
-        }
-
         DINFO("frctl started...\n");
 
 #if 1
@@ -133,12 +122,15 @@ retry:
         ret = ly_update_status("running", -1);
         if (ret)
                 GOTO(err_ret, ret);
-
+ 
+        network_connect_mds(1);
+       
         frctl_srv_running = 1;
 
         DINFO("begin running\n");
         
         while (frctl_srv_running) { //we got nothing to do here
+                network_connect_mds(0);
                 //ret = register_nlm_service();
                 sleep(1);
         }

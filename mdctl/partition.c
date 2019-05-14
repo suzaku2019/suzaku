@@ -136,6 +136,10 @@ static void *__part_worker(void *arg)
                                 DWARN("%s not exist\n");
                                 sleep(1);
                                 continue;
+                        } else if (ret == ETCD_PROTOCOL_ERROR) {
+                                DWARN("watch %s, protocal error\n");
+                                sleep(1);
+                                continue;
                         } else
                                 GOTO(err_close, ret);
                 }

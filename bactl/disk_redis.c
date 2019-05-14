@@ -472,6 +472,7 @@ static int __disk_redis_hitor(disk_redis_t *disk_redis, const char *hash,
 
         
         YASSERT(reply->elements == 2);
+        YASSERT(reply->element[1]->elements % 2 == 0);
         YASSERT(reply->element[0]->type == REDIS_REPLY_STRING);
         YASSERT(reply->element[1]->type == REDIS_REPLY_ARRAY);
         *_cur = atol(reply->element[0]->str);
@@ -521,7 +522,7 @@ static int __disk_redis_itor(disk_redis_t *disk_redis, size_t *_cur,
                              const char *match, func3_t func, void *arg)
 {
         int ret;
-        redisReply *reply, *e1, *e2;
+        redisReply *reply, *e1;//, *e2;
         size_t i, cur = *_cur;
 
         //DINFO("HSCAN cur %u\n", cur);
@@ -547,13 +548,13 @@ static int __disk_redis_itor(disk_redis_t *disk_redis, size_t *_cur,
         *_cur = atol(reply->element[0]->str);
 
         //DBUG("scan %s count %ju\n", hash, reply->element[1]->elements);
-        for (i = 0; i < reply->element[1]->elements; i += 2) {
+        for (i = 0; i < reply->element[1]->elements; i += 1) {
                 e1 = reply->element[1]->element[i];
-                e2 = reply->element[1]->element[i + 1];
+                //e2 = reply->element[1]->element[i + 1];
                 YASSERT(e1->type == REDIS_REPLY_STRING);
-                YASSERT(e2->type == REDIS_REPLY_STRING);
+                //YASSERT(e2->type == REDIS_REPLY_STRING);
 
-                DBUG("key %s, value %s\n", e1->str, e2->str);
+                //DBUG("key %s, value %s\n", e1->str, e2->str);
 
                 ret = disk_redis_hitor(disk_redis, e1->str, match, func, arg);
                 if (ret)
