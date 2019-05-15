@@ -158,10 +158,13 @@ def docker_remove():
     for i in dock_list:
         _exec_system('docker rm %s' % (i))
 
-def docker_exec(host, cmd, t='native'):
+def docker_exec(cmd, host=None, t='native'):
+    if (host == None) :
+        host = dock_list[0]
+    
     if (t == 'native'):
-        print('docker exec %s %s' % (host, cmd))
-        (out, err) = exec_shell('docker exec %s %s' % (host, cmd))
+        print("docker exec %s bash -c '%s'" % (host, cmd))
+        (out, err) = exec_shell("docker exec %s bash -c '%s'" % (host, cmd))
         return out
     elif (t == 'ssh'):
         (out, err, stat) = _exec_remote(host, cmd)
@@ -207,7 +210,7 @@ class DockerNode():
         ]
 
         for i in cmd:
-            docker_exec(self.name, i)
+            docker_exec(i, self.name)
 
     def make(self):
         cmd = [
@@ -219,7 +222,7 @@ class DockerNode():
         ]
 
         for i in cmd:
-            docker_exec(self.name, i)
+            docker_exec(i, self.name)
             
     def sync(self):
         newpath = os.path.abspath(path + '/../')
@@ -238,22 +241,22 @@ class DockerNode():
         disk_name = "%s/%s" % (path, idx)
 
         cmd = [
-            "mkdir -p %s" % (path),
-            "truncate %s -s %d" % (disk_name, disk_size),
-            "sdfs disk add --pool %s --driver raw_aio --device %s --page_size %d" % (pool, disk_name, page_size),
+            'mkdir -p %s' % (path),
+            'truncate %s -s %d' % (disk_name, disk_size),
+            'sdfs disk add --pool %s --driver raw_aio --device %s --page_size %d' % (pool, disk_name, page_size),
         ]
 
         for i in cmd:
-            docker_exec(self.name, i)
+            docker_exec(i, self.name)
 
     def add_disk_fs(pool):
 
         cmd = [
-            "sdfs disk add --pool %s --driver filesystem --device fake" % (pool)
+            'sdfs disk add --pool %s --driver filesystem --device fake' % (pool)
         ]
         
         for i in cmd:
-            docker_exec(self.name, i)
+            docker_exec(i, self.name)
             
     def add_disk(self, pool):
         
@@ -272,21 +275,21 @@ class DockerNode():
             solo = "off"
             
         cmd = [
-            "cp /tmp/%s/test/sdfs.conf /opt/%s/etc/sdfs.conf" % (project, sdfs),
-            "sed -i 's/127.0.0.0/%s/g' /opt/%s/etc/sdfs.conf" % (self.addr, sdfs),
-            "sed -i 's/solomode off/solomode %s/g' /opt/%s/etc/sdfs.conf" % (solo, sdfs),
-            '/opt/%s/app/admin/cluster.py create --hosts %s ' % (sdfs, lst),
+            'cp /tmp/%s/test/sdfs.conf /opt/%s/etc/sdfs.conf' % (project, sdfs),
+            'sed -i "s/127.0.0.0/%s/g" /opt/%s/etc/sdfs.conf' % (self.addr, sdfs),
+            'sed -i "s/solomode off/solomode %s/g" /opt/%s/etc/sdfs.conf' % (solo, sdfs),
+            '/opt/%s/app/admin/cluster.py create --hosts %s' % (sdfs, lst),
         ]
 
         for i in cmd:
-            docker_exec(self.name, i)
+            docker_exec(i, self.name)
 
     def update(self):
         self.sync()
         self.make()
 
     def cmd(self, _cmd):
-        docker_exec(self.name, _cmd)
+        docker_exec(_cmd, self.name)
         
 
 import sys
@@ -356,7 +359,7 @@ if __name__ == "__main__":
         dockernode = DockerNode(dock_list[0])
         dockernode.update()
         dockernode.create()
-
+        
         dockernode.cmd("sdfs mkpool %s" % (args.pool))
 
         for i in dock_list:

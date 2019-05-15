@@ -494,25 +494,8 @@ def test_init():
     cluster = Cluster(config)
     cluster.create([socket.gethostname()])
 
-def test():
-    script_path = os.path.join(CUR_PATH, 'script')
-
-    #test_objmv()
-    
-    exec_shell("python2 %s/test_list.py --length 1 --home %s >> %s/fileop.log 2>&1" % (CUR_PATH, TEST_PATH, LOG_PATH))
-    #exec_shell("python2 %s/nfs_test.py --home %s  >> %s/nfs.log 2>&1 && sync && umount /mnt/nfs" % (script_path, TEST_PATH, LOG_PATH))
-    #exec_shell("python2 %s/ftp_test.py --home %s  >> %s/ftp.log 2>&1" % (script_path, TEST_PATH, LOG_PATH))
-    #exec_shell("python2 %s/group_test.py  >> %s/misc.log 2>&1" % (script_path, LOG_PATH))
-    #exec_shell("python2 %s/user_test.py >> %s/misc.log 2>&1" % (script_path, LOG_PATH))
-    #exec_shell("python2 %s/share_test.py  >> %s/misc.log 2>&1" % (script_path, LOG_PATH))
-    """
-    exec_shell("python2 %s/quota_test.py  >> %s/misc.log 2>&1" % (script_path, LOG_PATH))
-    """
-
-    #exec_shell("python2 %s/fuse_test.py --home %s" % (CUR_PATH, TEST_PATH))
-    #exec_shell("python2 %s/flock.py" % (script_path))
-    #umount_nfsv4()
-    #time.sleep(2)
+def test(pool):
+    exec_shell("python2 %s/test_list.py --length 5 --pool %s --home %s >> %s/fileop.log 2>&1" % (CUR_PATH, pool, TEST_PATH, LOG_PATH))
     dmsg("test all successfully")
 
 def test_exec(args):
@@ -550,6 +533,45 @@ def test_exec(args):
     end = time.time()
     print "used %s!" % (end - begin)
 
+
+def new_test(args):
+    dmsg("test begin, log is in %s" % (LOG_PATH))
+    pool = "default"
+    os.system("rm -rf %s" % (LOG_PATH))
+    os.system("mkdir -p %s" % (LOG_PATH))
+    cmd = os.path.abspath(os.path.split(os.path.realpath(__file__))[0]) + "/docker.py create --pool %s >> %s/docker.log 2>&1" % (pool, LOG_PATH)
+    print cmd
+    os.system(cmd)
+    
+    begin = time.time()
+    global RUNNING
+    RUNNING = 1
+
+    """
+    if not args.nofail:
+        fail_simulate()
+
+    time.sleep(3)
+    """
+
+    try:
+        test(pool)
+    except Exception, e:
+        print 'test fail'
+        print e
+        RUNNING = 0
+        end = time.time()
+        print "used %s!" % (end - begin)
+        kill9_self()
+        exit(e.errno)
+    else:
+        print "test succ!"
+
+    RUNNING = 0
+    end = time.time()
+    print "used %s!" % (end - begin)
+
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--nofail", action="store_true", help="nofail")
@@ -559,7 +581,4 @@ if __name__ == "__main__":
 
     cmd = "mkdir -p %s && list=`ls %s/*.log` ;for i in $list; do echo "" > $i;done" % (LOG_PATH, LOG_PATH)
     os.system(cmd)
-    if args.config:
-        test_conf()
-    else:
-        test_exec(args)
+    new_test(args)

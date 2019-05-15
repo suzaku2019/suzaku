@@ -13,10 +13,11 @@ admin = os.path.abspath(os.path.split(os.path.realpath(__file__))[0] + '/../admi
 sys.path.insert(0, admin)
 
 from utils import  get_value, Exp, dwarn, dmsg, derror, exec_shell
-from config import Config
+from docker import docker_exec
 #from fail import Fail
 
 TEST_PATH = None
+TEST_POOL = None
 
 def fail_exit(msg):
     derror(msg)
@@ -25,23 +26,6 @@ def fail_exit(msg):
     os.system('for pid in `ps -ef | grep "objck" | grep -v grep | cut -c 9-15`; do kill -9 $pid; done')
     os.system('kill -9 ' + str(os.getpid()))
 
-def create_disk_fs(pool):
-    os.system("sdfs disk add --pool %s --driver filesystem --device fake" % (pool))
-
-def create_disk_block(pool, idx):
-    disk_size = 1024 * 1024 * 1024 * 10
-    page_size = 1024 * 1024 * 4
-    disk_name = "%s/data/bactl/%s.fake_disk" % (TEST_PATH, idx)
-    os.system("mkdir -p %s/bactl" % (TEST_PATH))
-    os.system("truncate %s -s %d" % (disk_name, disk_size))
-    os.system("sdfs disk add --pool %s --driver raw_aio --device %s --page_size %d" % (pool, disk_name, page_size))
-
-def mkpool(pool):
-    os.system("sdfs mkpool %s" % (pool))
-    for i in range(7):
-        #create_disk_fs(pool)
-        create_disk_block(pool, i)
-   
 def test_coredump():
     """
     检查是否有core产生, 如果有就exit
@@ -94,11 +78,10 @@ def test_exec(cmd):
     test_invalid_rw()
     
 class Test_list:
-    def __init__(self, parent, count, config):
+    def __init__(self, parent, count):
         self.bin = "fake-bin"
         self.count = count
         self.parent = parent
-        self.config = config
         self.dict = {}
         for i in range(self.count):
             self.dict[str(uuid.uuid1())] = str(uuid.uuid1())
@@ -115,7 +98,7 @@ class Test_list:
             while (1):
                 dmsg(cmd_create + '[%d/%d]' % (idx, total) + " retry %d" % (retry))
                 try:
-                    test_exec(cmd_create)
+                    docker_exec(cmd_create)
                 except Exp, e:
                     if (e.errno == errno.EIO or retry > 300):
                         raise
@@ -125,7 +108,7 @@ class Test_list:
                             raise Exp(errno.EEXIST, "create fail, exist")
                         else:
                             try:
-                                test_exec(cmd_remove)
+                                docker_exec(cmd_remove)
                             except Exp, e:
                                 pass
 
@@ -145,7 +128,7 @@ class Test_list:
             while (1):
                 dmsg(cmd_check + ' [%d/%d]' % (idx, total) + " retry %d" % (retry))
                 try:
-                    test_exec(cmd_check)
+                    docker_exec(cmd_check)
                 except Exp, e:
                     if (e.errno == errno.EIO or retry > 300):
                         raise
@@ -172,7 +155,7 @@ class Test_list:
             while (1):
                 dmsg(cmd_update + '[%d/%d]' % (idx, total) + " retry %d" % (retry))
                 try:
-                    test_exec(cmd_update)
+                    docker_exec(cmd_update)
                 except Exp, e:
                     if (e.errno == errno.EIO or retry > 300):
                         raise
@@ -198,85 +181,90 @@ def _test_exec(cmd):
             continue
         break
 
-def test_mkdir(config, target, ec=None):
+def test_mkdir(target, ec=None):
     if ec:
-        cmd = "%s %s -e %s" % (config.uss_mkdir, target, ec);
+        cmd = "%s /%s%s -e %s" % ("sdfs mkdir", TEST_POOL, target, ec);
     else:
-        cmd = "%s %s" % (config.uss_mkdir, target);
-    _test_exec(cmd)
-    return target
+        cmd = "%s /%s%s" % ("sdfs mkdir",TEST_POOL, target);
+
+    docker_exec(cmd)
+    return "/%s%s" % (TEST_POOL, target)
 
 def test_touch(target):
-    cmd = "%s %s" % (config.uss_touch, target);
-    cmd = "%s -s 1G %s" % (config.uss_truncate, target);
-    _test_exec(cmd)
-    return target
+    cmd = "%s /%s%s" % (config.uss_touch,TEST_POOL, target);
+    cmd = "%s -s 1G /%s%s" % (config.uss_truncate,TEST_POOL, target);
+
+    docker_exec(cmd)
+    return "/%s%s" % (TEST_POOL, target)
 
 class Dir_test(Test_list):
-    def __init__(self, parent, count, config):
-        Test_list.__init__(self, parent, count, config)
+    def __init__(self, parent, count):
+        Test_list.__init__(self, parent, count)
         self.updateable = False
     def cmd_create(self, key, value):
-        return "%s %s/%s" % (self.config.uss_mkdir, self.parent, key)
+        return "%s %s/%s" % ("sdfs mkdir", self.parent, key)
 
     def cmd_check(self, key, value):
-        return "%s %s/%s > /dev/null " % (self.config.uss_ls, self.parent, key)
+        return "%s %s/%s > /dev/null " % ("sdfs ls", self.parent, key)
 
     def cmd_remove(self, key, value):
-        return "%s %s/%s" % (self.config.uss_rmdir, self.parent, key)
+        return "%s %s/%s" % ("sdfs rmdir", self.parent, key)
 
 class File_test(Test_list):
-    def __init__(self, parent, count, config):
-        Test_list.__init__(self, parent, count, config)
+    def __init__(self, parent, count):
+        Test_list.__init__(self, parent, count)
         self.updateable = True
     def cmd_create(self, key, value):
-        return "%s %s/%s" % (self.config.uss_touch, self.parent, key)
+        return "%s %s/%s" % ("sdfs touch", self.parent, key)
 
     def cmd_check(self, key, value):
         return "got=`%s %s/%s ` && need='%s' && if [ $need != $got ]; then echo need: $need got: $got && exit 5; fi" %\
-                (self.config.uss_cat, self.parent, key, value)
+                ("sdfs cat", self.parent, key, value)
 
     def cmd_remove(self, key, value):
-        return "%s %s/%s" % (self.config.uss_rm, self.parent, key)
+        return "%s %s/%s" % ("sdfs rm", self.parent, key)
 
     def cmd_update(self, key, value):
-        return "%s %s %s/%s" % (self.config.uss_write, value, self.parent, key)
+        return "%s %s %s/%s" % ("sdfs write", value, self.parent, key)
 
 class Attr_test(Test_list):
-    def __init__(self, parent, count, config):
-        Test_list.__init__(self, parent, count, config)
+    def __init__(self, parent, count):
+        Test_list.__init__(self, parent, count)
         self.updateable = True
     def cmd_create(self, key, value):
-        return "%s -s %s -V %s %s" % (self.config.uss_attr, key, value, self.parent)
+        return "%s -s %s -V %s %s" % ("sdfs attr", key, value, self.parent)
 
     def cmd_check(self, key, value):
         return "got=`%s -g %s %s ` && need='%s' && if [ $need != $got ]; then echo need: $need got: $got && exit 5; fi" %\
-                (self.config.uss_attr, key, self.parent, value)
+                ("sdfs attr", key, self.parent, value)
 
     def cmd_remove(self, key, value):
-        return "%s -r %s %s" % (self.config.uss_attr, key, self.parent)
+        return "%s -r %s %s" % ("sdfs attr", key, self.parent)
 
     def cmd_update(self, key, value):
-        return "%s -s %s -V %s %s" % (self.config.uss_attr, key, value, self.parent)
+        return "%s -s %s -V %s %s" % ("sdfs attr", key, value, self.parent)
 
 def usage():
     print ("usage:")
-    print (sys.argv[0] + " --home <home> --length [length] --type [dir,file,attr] [-e k+r]")
+    print (sys.argv[0] + " --home [home] --pool [pool] --length [length] --type [dir,file,attr] [-e k+r]")
 
 def main():
     try:
         opts, args = getopt.getopt(
                 sys.argv[1:], 
-                'hv', ['length=', 'type=', "home=", "ec="]
+                'hv', ['length=', 'type=', "home=", "ec=", "pool="]
                 )
     except getopt.GetoptError, err:
         print str(err)
         usage()
         exit(errno.EINVAL)
 
-    home = None
+    home = "/opt/sdfs"
     t = 'all'
     ec = "2+1"
+    pool = "default"
+    length = 5
+    t = "all"
     for o, a in opts:
         if o in ('--help'):
             usage()
@@ -287,6 +275,8 @@ def main():
             length = int(a)
         elif o in ('--home'):
             home = a
+        elif o in ('--pool'):
+            pool = a
         elif o in ('--type'):
             t = a
         else:
@@ -295,52 +285,51 @@ def main():
 
     global TEST_PATH
     TEST_PATH = home
-    config = Config(home)
+    global TEST_POOL
+    TEST_POOL = pool
 
     test = []
     if (t == 'dir'):
-        target = test_mkdir(config, "/testdir")
+        target = test_mkdir("/testdir")
         test.append(Dir_test(target, length))
     elif (t == 'file'):
-        target = test_mkdir(config, "/testfile")
+        target = test_mkdir("/testfile")
         test.append(File_test(target, length))
     elif (t == 'attr'):
-        target = test_mkdir(config, "/testattr")
+        target = test_mkdir("/testattr")
         test.append(Attr_test(target, length))
 
     elif (t == 'ec'):
-        target = test_mkdir(config, "/testdir_ec", ec)
-        test.append(Dir_test(target, length, config))
-        target = test_mkdir(config, "/testfile_ec", ec)
-        test.append(File_test(target, length, config))
+        target = test_mkdir("/testdir_ec", ec)
+        test.append(Dir_test(target, length))
+        target = test_mkdir("/testfile_ec", ec)
+        test.append(File_test(target, length))
 
     elif (t == 'all'):
-        mkpool("testfile")
-        
-        target = test_mkdir(config, "/testfile")
-        test.append(File_test(target, length, config))
+        target = test_mkdir("/testfile")
+        test.append(File_test(target, length))
 
         """
-        target = test_mkdir(config, "/testdir")
-        test.append(Dir_test(target, length, config))
+        target = test_mkdir("/testdir")
+        test.append(Dir_test(target, length))
 
-        target = test_mkdir(config, "/testattr")
-        test.append(Attr_test(target, length, config))
+        target = test_mkdir("/testattr")
+        test.append(Attr_test(target, length))
 
-        target = test_mkdir(config, "/small")
-        target = test_mkdir(config, "/small/testfile")
-        test.append(File_test(target, length, config))
+        target = test_mkdir("/small")
+        target = test_mkdir("/small/testfile")
+        test.append(File_test(target, length))
         """
 
         derror("ec test disabled")
 
         """
-        target = test_mkdir(config, "/testdir_ec", ec)
-        test.append(Dir_test(target, length, config))
+        target = test_mkdir("/testdir_ec", ec)
+        test.append(Dir_test(target, length))
 
-        target = test_mkdir(config, "/testfile_ec", ec)
-        test.append(File_test(target, length, config))
-        target = test_mkdir(config, "/small/testfile_ec", ec)
+        target = test_mkdir("/testfile_ec", ec)
+        test.append(File_test(target, length))
+        target = test_mkdir("/small/testfile_ec", ec)
         """
 
     else:
@@ -369,7 +358,4 @@ def main():
             os.system('kill -9 ' + str(os.getpid()))
 
 if __name__ == '__main__':
-    if (len(sys.argv) == 1):
-        usage()
-    else:
-        main()
+    main()

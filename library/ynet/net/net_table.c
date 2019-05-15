@@ -434,8 +434,8 @@ static int __network_connect2(entry_t *ent, const ynet_net_info_t *info)
 
         __netable_set(info->name, 1);
 
-        DINFO("connect to %s sockid %s/%d time %u\n",
-              ent->lname, _inet_ntoa(ent->sock.u.sd.addr), ent->sock.u.sd.sd, (int)ent->ltime.now);
+        DINFO("connect to %s sockid %s/%d\n",
+              ent->lname, _inet_ntoa(ent->sock.u.sd.addr), ent->sock.u.sd.sd);
 
 out:
         netable_unlock(&nid);

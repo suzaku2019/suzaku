@@ -72,4 +72,12 @@ Usage
 Auto Testing
 ===========================================================
     cd test
-    docker.py
+
+    prepare test env:
+    
+    ./docker.py pull
+    ./docker.py build
+    ./docker.py run
+
+    run test:
+    ./test.py
