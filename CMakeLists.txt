@@ -344,6 +344,9 @@ target_link_libraries(sdfs.chown ${CMAKE_C_LIBS})
 add_executable(sdfs.chkstat ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.chkstat.c)
 target_link_libraries(sdfs.chkstat ${CMAKE_C_LIBS})
 
+add_executable(sdfs.recovery ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.recovery.c)
+target_link_libraries(sdfs.recovery ${CMAKE_C_LIBS})
+
 
 set (USS_ADMIN_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/utils/uss.admin.c
@@ -377,6 +380,7 @@ install(TARGETS sdfs.md5sum RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.stat RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.admin RUNTIME DESTINATION app/bin)
 install(TARGETS sdfs.chkstat RUNTIME DESTINATION app/bin)
+install(TARGETS sdfs.recovery RUNTIME DESTINATION app/bin)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/admin DESTINATION app/ FILE_PERMISSIONS OWNER_EXECUTE GROUP_EXECUTE WORLD_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION app/ FILE_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)

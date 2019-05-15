@@ -128,4 +128,6 @@ void chunk_close(chunk_t **_chunk);
 int chunk_get_token(chunk_t *chunk, int op, io_token_t *token);
 int chunk_recovery(chunk_t *chunk);
 
+void chkinfo2str(const chkinfo_t *chkinfo, char *buf);
+
 #endif

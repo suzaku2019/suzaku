@@ -451,6 +451,7 @@ int range_ctl_chunk_recovery(const chkid_t *chkid)
         chkid_t rangeid;
         range_entry_t *ent;
 
+        YASSERT(chkid->type == ftype_raw);
         cid2rid(chkid, &rangeid);
 
         ret = __range_ctl_entry(range_ctl, &rangeid, &ent);

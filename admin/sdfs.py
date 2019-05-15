@@ -37,10 +37,10 @@ def usage():
            "    rmdir\n"
            "    truncate\n"
            "    write\n"
-           "    chkstat\n"
            "admin ops:\n"
            "    disk\n"
-           "    health\n"
+           "    chkstat\n"
+           "    recovery\n"
            "    mon\n"
            )
 
@@ -48,7 +48,7 @@ def usage():
 def is_c_type(cmd):
     lst = ['mkpool', 'mkdir', 'ls', 'touch', 'stat', 'attr', 'cat',
            'ln', 'mv', 'rmdir', 'truncate', 'write',
-           'chkstat', 'health']
+           'chkstat', 'recovery']
     if cmd in lst:
         return True
     else:

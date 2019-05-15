@@ -22,6 +22,33 @@
 #include "cds_rpc.h"
 #include "dbg.h"
 
+void chkinfo2str(const chkinfo_t *chkinfo, char *buf)
+{
+        int ret, i, tmo;
+        const char *stat;
+        const reploc_t *diskid;
+
+        snprintf(buf, MAX_BUF_LEN, "chunk "CHKID_FORMAT" info_version %llu @ ",
+                 CHKID_ARG(&chkinfo->chkid), (LLU)chkinfo->md_version);
+
+        for (i = 0; i < (int)chkinfo->repnum; ++i) {
+                diskid = &chkinfo->diskid[i];
+
+                tmo = ng.daemon ? 0 : 1;
+                ret = disk_connect(&diskid->id, NULL, tmo, 0);
+                if (ret) {
+                        stat = "offline";
+                } else if (diskid->status == __S_DIRTY) {
+                        stat = "dirty";
+                } else {
+                        stat = "clean";
+                }
+
+                snprintf(buf + strlen(buf), MAX_NAME_LEN, "%s:%s ",
+                         disk_rname(&diskid->id), stat);
+        }
+}
+
 int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, const ltoken_t *ltoken,
                const ec_t *ec, int flag)
 {

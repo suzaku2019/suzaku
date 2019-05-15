@@ -342,6 +342,8 @@ int range_rpc_chunk_recovery(const coreid_t *coreid, const chkid_t *chkid)
         uint32_t count;
         msg_t *req;
 
+        YASSERT(chkid->type == ftype_raw);
+        
         ret = network_connect(&coreid->nid, NULL, 1, 0);
         if (unlikely(ret))
                 GOTO(err_ret, ret);

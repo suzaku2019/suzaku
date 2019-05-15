@@ -30,8 +30,7 @@ int range_ctl_chunk_getinfo(const chkid_t *chkid, chkinfo_t *chkinfo);
 int range_rpc_get_token(const coreid_t *, const chkid_t *chkid, uint32_t op,
                         io_token_t *token);
 int range_rpc_chunk_recovery(const coreid_t *coreid, const chkid_t *chkid);
-int range_rpc_chunk_getinfo(const coreid_t *coreid, const chkid_t *chkid,
-                            chkinfo_t *chkinfo);
+int range_rpc_chunk_getinfo(const coreid_t *coreid, const chkid_t *chkid, chkinfo_t *chkinfo);
 int range_rpc_init();
 int range_init();
 

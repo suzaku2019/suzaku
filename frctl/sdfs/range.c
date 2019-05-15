@@ -57,6 +57,8 @@ int range_chunk_recovery(const chkid_t *chkid)
         int ret;
         coreid_t coreid;
 
+        YASSERT(chkid->type == ftype_raw);
+        
         ret = range_chunk_location(chkid, &coreid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);

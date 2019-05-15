@@ -20,25 +20,43 @@ void show_help(char *prog)
         fprintf(stderr, "%s (id)_v(version) -s idx:available\n", prog);
 }
 
+static void __chunk_recovery(const chkinfo_t *chkinfo)
+{
+        int ret;
+
+        range_chunk_recovery(&chkinfo->chkid);
+        return;
+        
+        for (int i = 0; i < (int)chkinfo->repnum; i++) {
+                const reploc_t *reploc = &chkinfo->diskid[i];
+
+                if (reploc->status) {
+                        range_chunk_recovery(&chkinfo->chkid);
+                        break;
+                }
+
+                ret = disk_connect(&reploc->id, NULL, 0, 0);
+                if (ret) {
+                        range_chunk_recovery(&chkinfo->chkid);
+                        break;
+                }
+        }
+}
+
 static void __chkstat_sub(void *_volume, void *_chkinfo)
 {
         (void) _volume;
-        const chkinfo_t *chkinfo = _chkinfo;
-        char buf[MAX_BUF_LEN];
 
-        chkinfo2str(chkinfo, buf);
-        printf("    %s\n", buf);
+        __chunk_recovery(_chkinfo);
 }
-
+        
 
 static void __chkstat_file__(void *_volume, void *_chkinfo)
 {
         volume_t *volume = _volume;
-        const chkinfo_t *chkinfo = _chkinfo;
-        char buf[MAX_BUF_LEN];
+        chkinfo_t *chkinfo = _chkinfo;
 
-        chkinfo2str(chkinfo, buf);
-        printf("  %s\n", buf);
+        __chunk_recovery(_chkinfo);
         
         volume_chunk_iterator(volume, &chkinfo->chkid, __chkstat_sub, volume);
 }
@@ -49,15 +67,13 @@ static int __chkstat_file(const fileid_t *fileid)
         volume_t *volume;
         chkinfo_t *chkinfo;
         char _chkinfo[CHKINFO_MAX];
-        char buf[MAX_BUF_LEN];
 
         chkinfo = (void *)_chkinfo;
         ret = md_chunk_load(fileid, chkinfo);
         if (ret)
                 GOTO(err_ret, ret);
 
-        chkinfo2str(chkinfo, buf);
-        printf("%s\n", buf);
+        __chunk_recovery(chkinfo);
         
         ret = volume_open(&volume, fileid);
         if (ret)
