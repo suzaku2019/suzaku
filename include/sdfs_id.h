@@ -76,7 +76,9 @@ typedef struct {
         uint32_t figerprint;
         uint16_t tabid;
         uint32_t opcode;
+#if ENABLE_RDMA
         data_prop_t data_prop;
+#endif
 } msgid_t;
 
 #pragma pack()

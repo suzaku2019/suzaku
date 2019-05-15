@@ -14,32 +14,14 @@
 
 #define YNET_PORT_RANDOM 0
 
-//extern int nid_cmp(const nid_t *key, const nid_t *data);
-
-#if 0
-typedef int (*net_pack_handler)(void *self, void *buf);
-//typedef int (*net_pack_len)(void *, uint32_t);
-typedef int (*net_pack_len)(void *, uint32_t, int *msg_len, int *io_len);
-typedef int (*net_event_handler)(int fd, void *);
-typedef int (*net_selfcheck_func)(void **buf, uint32_t *buflen);
-typedef void (*net_request_corehandler)(void *);
-
-#else
-
 typedef int (*net_pack_handler)(const nid_t *nid, const sockid_t *sockid, buffer_t *buf);
 typedef int (*net_pack_len)(void *, uint32_t, int *msg_len, int *io_len);
 typedef int (*net_event_write_handler)(struct epoll_event *ev, void *);
 typedef int (*net_event_read_handler)(void *sock, void *ctx);
 
 typedef int (*net1_request_handler)(job_t *, void *sock, void *context);
-//typedef int (*net_reset_handler)(const net_handle_t *nh, uuid_t *nodeid);
-//typedef int (*net_reset_handler)(const net_handle_t *nh, char *nodeid);
 
 #define net_request_handler func_t
-
-//to be remove
-
-#endif
 
 typedef enum {
         MSG_NULL, //XXX:fix this type
@@ -48,13 +30,10 @@ typedef enum {
         MSG_PING,
         MSG_MDP,
         MSG_REPLICA,
-        MSG_REPLICA_CORE,
         MSG_LEASE,
         MSG_RINGLOCK,
         MSG_RANGE,
-        MSG_RANGE_CORE,
         MSG_MDS,
-        MSG_MDS_CORE,
         MSG_MAX,
 } net_progtype_t;
 

@@ -287,7 +287,7 @@ err_ret:
         return ret;
 }
 
-static int IO_FUNC __disk_write(const diskid_t *diskid, const io_t *io, const buffer_t *buf)
+int IO_FUNC disk_io_write(const diskid_t *diskid, const io_t *io, const buffer_t *buf)
 {
         int ret, idx;
         disk_t *disk;
@@ -309,38 +309,6 @@ static int IO_FUNC __disk_write(const diskid_t *diskid, const io_t *io, const bu
         return 0;
 err_ref:
         disk_slot_private_deref(idx);
-err_ret:
-        return ret;
-}
-
-int IO_FUNC __disk_write_va(va_list ap)
-{
-        const diskid_t *diskid = va_arg(ap, const diskid_t *);
-        const io_t *io = va_arg(ap, const io_t *);
-        const buffer_t*buf = va_arg(ap, const buffer_t *);
-
-        va_end(ap);
-        
-        return __disk_write(diskid, io, buf);
-}
-
-
-int IO_FUNC disk_io_write(const diskid_t *diskid, const io_t *io, const buffer_t *buf)
-{
-        int ret;
-
-        if (likely(core_self())) {
-                ret = __disk_write(diskid, io, buf);
-                if (ret)
-                        GOTO(err_ret, ret);
-        } else {
-                ret = core_request(core_hash(&io->id), -1, "disk_write",
-                                   __disk_write_va, diskid, io, buf);
-                if (ret)
-                        GOTO(err_ret, ret);
-        }
-
-        return 0;
 err_ret:
         return ret;
 }

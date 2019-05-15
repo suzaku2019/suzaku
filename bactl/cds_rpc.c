@@ -127,12 +127,7 @@ static void __request_handler(void *arg)
         return ;
 err_ret:
         mbuffer_free(&buf);
-        if (sockid.type == SOCKID_CORENET) {
-                DBUG("corenet\n");
-                corerpc_reply_error(&sockid, &msgid, ret);
-        } else {
-                rpc_reply_error(&sockid, &msgid, ret);
-        }
+        corerpc_reply_error_union(&sockid, &msgid, ret);
         DBUG("error op %u from %s, id (%u, %x)\n", req.op,
              _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
         return;
@@ -165,12 +160,7 @@ static int __cds_srv_read(const sockid_t *sockid, const msgid_t *msgid, buffer_t
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        if (likely(sockid->type == SOCKID_CORENET)) {
-                DBUG("corenet read\n");
-                corerpc_reply1(sockid, msgid, &reply);
-        } else {
-                rpc_reply1(sockid, msgid, &reply);
-        }
+        corerpc_reply_union1(sockid, msgid, &reply);
 
         mbuffer_free(&reply);
 
@@ -200,8 +190,6 @@ int cds_rpc_read(const diskid_t *diskid, const io_t *io, buffer_t *_buf)
         
         ANALYSIS_BEGIN(0);
 
-        //YASSERT(io->offset <= YFS_CHK_LEN_MAX);
-
         DBUG("read "CHKID_FORMAT" offset %ju size %u\n",
               CHKID_ARG(&io->id), io->offset, io->size);
         
@@ -214,27 +202,17 @@ int cds_rpc_read(const diskid_t *diskid, const io_t *io, buffer_t *_buf)
                        io, sizeof(*io),
                        NULL);
 
-        if (likely(ng.daemon)) {
-                DBUG("corenet read\n");
+        coreid_t coreid;
+        ret = chkid2coreid(&io->id, &nid, &coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
 
-                coreid_t coreid;
-                ret = chkid2coreid(&io->id, &nid, &coreid);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-
-                ret = corerpc_postwait("cds_rpc_read", &coreid,
-                                       req, sizeof(*req) + count, NULL,
-                                       _buf, MSG_REPLICA_CORE, io->size, _get_timeout());
-                if (unlikely(ret)) {
-                        YASSERT(ret != EINVAL);
-                        GOTO(err_ret, ret);
-                }
-        } else {
-                ret = rpc_request_wait2("cds_rpc_read", &nid,
-                                        req, sizeof(*req) + count, _buf,
-                                        MSG_REPLICA, 0, _get_timeout());
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+        ret = corerpc_postwait_union("cds_rpc_read", &coreid,
+                                req, sizeof(*req) + count, NULL,
+                                _buf, MSG_REPLICA, io->size, _get_timeout());
+        if (unlikely(ret)) {
+                YASSERT(ret != EINVAL);
+                GOTO(err_ret, ret);
         }
 
         DBUG("read return\n");
@@ -282,12 +260,7 @@ static int __cds_srv_write(const sockid_t *sockid, const msgid_t *msgid, buffer_
                 GOTO(err_ret, ret);
         }
 
-        if (likely(sockid->type == SOCKID_CORENET)) {
-                DBUG("corenet write\n");
-                corerpc_reply(sockid, msgid, NULL, 0);
-        } else {
-                rpc_reply(sockid, msgid, NULL, 0);
-        }
+        corerpc_reply_union(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -331,26 +304,18 @@ int cds_rpc_write(const diskid_t *diskid, const io_t *io,
 
         DBUG("write %u\n", sizeof(*req) + count + _buf->len);
         
-        if (likely(ng.daemon)) {
-                coreid_t coreid;
-                ret = chkid2coreid(&io->id, &nid, &coreid);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+        coreid_t coreid;
+        ret = chkid2coreid(&io->id, &nid, &coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
 
-                DBUG("corenet write\n");
-                ret = corerpc_postwait("cds_rpc_write", &coreid,
-                                       req, sizeof(*req) + count, _buf,
-                                       NULL, MSG_REPLICA_CORE, io->size, _get_timeout());
-                if (unlikely(ret)) {
-                        YASSERT(ret != EINVAL);
-                        GOTO(err_ret, ret);
-                }
-        }  else {
-                ret = rpc_request_wait1("cds_rpc_write", &nid,
-                                        req, sizeof(*req) + count, _buf,
-                                        MSG_REPLICA, 0, _get_timeout());
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+        DBUG("corenet write\n");
+        ret = corerpc_postwait_union("cds_rpc_write", &coreid,
+                               req, sizeof(*req) + count, _buf,
+                               NULL, MSG_REPLICA, io->size, _get_timeout());
+        if (unlikely(ret)) {
+                YASSERT(ret != EINVAL);
+                GOTO(err_ret, ret);
         }
 
         DBUG("write return\n");
@@ -644,7 +609,7 @@ int cds_rpc_init()
         
         if (ng.daemon) {
                 rpc_request_register(MSG_REPLICA, __request_handler, NULL);
-                corerpc_register(MSG_REPLICA_CORE, __request_handler, NULL);
+                corerpc_register(MSG_REPLICA, __request_handler, NULL);
         }
 
         return 0;

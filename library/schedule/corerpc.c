@@ -370,9 +370,9 @@ err_ret:
         return ret;
 }
 
-int IO_FUNC corerpc_postwait1(const char *name, const coreid_t *coreid, const void *request,
-                              int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
-                              int msg_type, int msg_size, int timeout)
+int IO_FUNC corerpc_postwait_union(const char *name, const coreid_t *coreid, const void *request,
+                                   int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
+                                   int msg_type, int msg_size, int timeout)
 {
         int ret;
 
@@ -382,8 +382,8 @@ int IO_FUNC corerpc_postwait1(const char *name, const coreid_t *coreid, const vo
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         } else {
-                ret = rpc_request_wait3(name, &coreid->nid, request, reqlen,
-                                        wbuf, rbuf, msg_type, msg_size, timeout);
+                ret = rpc_request_wait3(name, coreid, request, reqlen,
+                                        wbuf, rbuf, msg_type, -1, timeout);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         }
@@ -730,7 +730,18 @@ void IO_FUNC corerpc_reply1(const sockid_t *sockid, const msgid_t *msgid, buffer
 #endif
 }
 
-void corerpc_reply(const sockid_t *sockid, const msgid_t *msgid, const void *_buf, int len)
+void IO_FUNC corerpc_reply_union1(const sockid_t *sockid, const msgid_t *msgid, buffer_t *buf)
+{
+        if (likely(sockid->type == SOCKID_CORENET)) {
+                corerpc_reply1(sockid, msgid, buf);
+        } else {
+                rpc_reply1(sockid, msgid, buf);
+        }
+        
+}
+
+void IO_FUNC corerpc_reply(const sockid_t *sockid, const msgid_t *msgid,
+                           const void *_buf, int len)
 {
         buffer_t buf;
 
@@ -740,6 +751,17 @@ void corerpc_reply(const sockid_t *sockid, const msgid_t *msgid, const void *_bu
 
         corerpc_reply1(sockid, msgid, &buf);
 }
+
+void IO_FUNC corerpc_reply_union(const sockid_t *sockid, const msgid_t *msgid,
+                                 const void *_buf, int len)
+{
+        if (likely(sockid->type == SOCKID_CORENET)) {
+                corerpc_reply(sockid, msgid, _buf, len);
+        } else {
+                rpc_reply(sockid, msgid, _buf, len);
+        }
+}
+
 
 void corerpc_reply_error(const sockid_t *sockid, const msgid_t *msgid, int _error)
 {
@@ -762,6 +784,16 @@ void corerpc_reply_error(const sockid_t *sockid, const msgid_t *msgid, int _erro
                 mbuffer_free(&buf);
         
 #endif
+}
+
+void corerpc_reply_error_union(const sockid_t *sockid, const msgid_t *msgid, int _error)
+{
+        if (sockid->type == SOCKID_CORENET) {
+                DBUG("corenet\n");
+                corerpc_reply_error(sockid, msgid, _error);
+        } else {
+                rpc_reply_error(sockid, msgid, _error);
+        }
 }
 
 static int __corerpc_init__(const char *name, core_t *core, rpc_table_t **_rpc_table)

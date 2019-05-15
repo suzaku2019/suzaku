@@ -53,6 +53,7 @@ int rpc_request_prep(buffer_t *buf, const msgid_t *msgid, const void *request,
         net_req->msgid = *msgid;
         net_req->crcode = 0;
         net_req->blocks = 0;
+        net_req->coreid = -1;
         net_req->master_magic = ng.master_magic;
         net_req->priority = (priority == -1) ? schedule_priority(NULL) : priority;
         net_req->load = core_latency_get();
@@ -73,8 +74,10 @@ err_ret:
         return ret;
 }
 
-static int __rpc_request_send(const sockid_t *sockid, const msgid_t *msgid, const void *request,
-                              int reqlen, const buffer_t *data, int msg_type, int priority)
+static int __rpc_request_send(const sockid_t *sockid, int coreid,
+                              const msgid_t *msgid, const void *request,
+                              int reqlen, const buffer_t *data,
+                              int msg_type, int priority)
 {
         int ret;
         buffer_t buf;
@@ -84,6 +87,9 @@ static int __rpc_request_send(const sockid_t *sockid, const msgid_t *msgid, cons
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        ynet_net_head_t *net_req = mbuffer_head(&buf);
+        net_req->coreid = coreid;
+        
         DBUG("send msg to %s, id (%u, %x), len %u\n",
               _inet_ntoa(sockid->addr), msgid->idx,
               msgid->figerprint, buf.len);
@@ -161,7 +167,8 @@ static int __rpc_request_getsolt(msgid_t *msgid, rpc_ctx_t *ctx, const char *nam
         if (schedule_running()) {
                 ctx->task = schedule_task_get();
 
-                ret = rpc_table_setsolt(__rpc_table__, msgid, __rpc_request_post_task, ctx, sockid, nid, timeout);
+                ret = rpc_table_setsolt(__rpc_table__, msgid, __rpc_request_post_task,
+                                        ctx, sockid, nid, timeout);
                 if (unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
         } else {
@@ -169,7 +176,8 @@ static int __rpc_request_getsolt(msgid_t *msgid, rpc_ctx_t *ctx, const char *nam
                 if (unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
 
-                ret = rpc_table_setsolt(__rpc_table__, msgid, __rpc_request_post_sem, ctx, sockid, nid, timeout);
+                ret = rpc_table_setsolt(__rpc_table__, msgid, __rpc_request_post_sem,
+                                        ctx, sockid, nid, timeout);
                 if (unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
         }
@@ -183,9 +191,6 @@ STATIC int __rpc_request_wait__(const net_handle_t *nh, const char *name, buffer
                                 rpc_ctx_t *ctx, int timeout)
 {
         int ret;
-#if 0
-        vm_t *vm = vm_self();
-#endif
 
         (void) timeout;
         
@@ -198,12 +203,6 @@ STATIC int __rpc_request_wait__(const net_handle_t *nh, const char *name, buffer
                         goto err_ret;
 
                 DBUG("%s yield resume\n", name);
-#if 0
-                if (vm && vm->exiting) {
-                        ret = ESHUTDOWN;
-                        GOTO(err_ret, ret);
-                }
-#endif
         } else {
                 DBUG("%s sem wait\n", name);
                 ret = _sem_wait(&ctx->sem);
@@ -248,8 +247,10 @@ err_ret:
         return ret;
 }
 
-STATIC int __rpc_request_wait(const char *name, const net_handle_t *nh, const void *request,
-                              int reqlen, const buffer_t *wbuf, buffer_t *rbuf, int msg_type,
+STATIC int __rpc_request_wait(const char *name, const net_handle_t *nh,
+                              int coreid, const void *request,
+                              int reqlen, const buffer_t *wbuf,
+                              buffer_t *rbuf, int msg_type,
                               int priority, int timeout)
 {
         int ret;
@@ -280,7 +281,8 @@ STATIC int __rpc_request_wait(const char *name, const net_handle_t *nh, const vo
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = __rpc_request_send(&sockid, &msgid, request, reqlen, wbuf, msg_type, priority);
+        ret = __rpc_request_send(&sockid, coreid, &msgid, request, reqlen,
+                                 wbuf, msg_type, priority);
         if (unlikely(ret)) {
                 ret = _errno_net(ret);
                 YASSERT(ret == ENONET || ret == ESHUTDOWN || ret == ESTALE || ret == ENOSYS);
@@ -315,7 +317,8 @@ int rpc_request_wait(const char *name, const nid_t *nid, const void *request, in
         mbuffer_init(&buf, 0);
         id2nh(&nh, nid);
 
-        ret = __rpc_request_wait(name, &nh, request, reqlen, NULL, &buf, msg_type, priority, timeout);
+        ret = __rpc_request_wait(name, &nh, -1, request, reqlen, NULL, &buf,
+                                 msg_type, priority, timeout);
         if (unlikely(ret))
                 goto err_ret;
 
@@ -348,7 +351,8 @@ int rpc_request_wait1(const char *name, const nid_t *nid, const void *request,
         net_handle_t nh;
 
         id2nh(&nh, nid);
-        ret = __rpc_request_wait(name, &nh, request, reqlen, wbuf, NULL, msg_type, priority, timeout);
+        ret = __rpc_request_wait(name, &nh, -1, request, reqlen, wbuf, NULL,
+                                 msg_type, priority, timeout);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -368,7 +372,8 @@ int rpc_request_wait2(const char *name, const nid_t *nid, const void *request,
         YASSERT(rbuf);
 
         id2nh(&nh, nid);
-        ret = __rpc_request_wait(name, &nh, request, reqlen, NULL, rbuf, msg_type, priority, timeout);
+        ret = __rpc_request_wait(name, &nh, -1, request, reqlen, NULL, rbuf,
+                                 msg_type, priority, timeout);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -377,17 +382,15 @@ err_ret:
         return ret;
 }
 
-int rpc_request_wait3(const char *name, const nid_t *nid, const void *request,
+int rpc_request_wait3(const char *name, const coreid_t *coreid, const void *request,
                       int reqlen, const buffer_t *wbuf, buffer_t *rbuf, int msg_type,
                       int priority, int timeout)
 {
         int ret;
         net_handle_t nh;
 
-        YASSERT(rbuf);
-
-        id2nh(&nh, nid);
-        ret = __rpc_request_wait(name, &nh, request, reqlen, wbuf, rbuf,
+        id2nh(&nh, &coreid->nid);
+        ret = __rpc_request_wait(name, &nh, coreid->idx, request, reqlen, wbuf, rbuf,
                                  msg_type, priority, timeout);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -405,7 +408,8 @@ int rpc_request_wait_sock(const char *name, const net_handle_t *nh, const void *
         buffer_t buf;
 
         mbuffer_init(&buf, 0);
-        ret = __rpc_request_wait(name, nh, request, reqlen, NULL, &buf, msg_type, priority, timeout);
+        ret = __rpc_request_wait(name, nh, -1, request, reqlen, NULL, &buf,
+                                 msg_type, priority, timeout);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 

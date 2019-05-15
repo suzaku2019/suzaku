@@ -72,7 +72,7 @@ int rpc_request_wait1(const char *name, const nid_t *nid, const void *request,
 int rpc_request_wait2(const char *name, const nid_t *nid, const void *request,
                       int reqlen, buffer_t *rbuf, int msg_type,
                      int priority, int timeout);
-int rpc_request_wait3(const char *name, const nid_t *nid, const void *request,
+int rpc_request_wait3(const char *name, const coreid_t *coreid, const void *request,
                       int reqlen, const buffer_t *wbuf, buffer_t *rbuf, int msg_type,
                       int priority, int timeout);
 int rpc_request_wait(const char *name, const nid_t *nid, const void *request,

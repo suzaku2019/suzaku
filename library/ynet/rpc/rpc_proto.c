@@ -11,6 +11,7 @@
 #include "schedule.h"
 #include "mem_cache.h"
 #include "adt.h"
+#include "core.h"
 #include "dbg.h"
 
 static net_prog_t  net_prog[MSG_MAX];
@@ -79,6 +80,20 @@ err_ret:
         return ret;
 }
 
+static int __core_request(va_list ap)
+{
+        net_request_handler handler = va_arg(ap, net_request_handler);
+        rpc_request_t *rpc_request = va_arg(ap, rpc_request_t *);
+        int priority = va_arg(ap, int);
+
+        va_end(ap);
+        
+        schedule_task_new("rpc", handler,
+                          rpc_request, priority);
+
+        return 0;
+}
+
 static int __rpc_request_handler(const nid_t *nid, const sockid_t *sockid,
                                  const ynet_net_head_t *head, buffer_t *buf)
 {
@@ -118,20 +133,22 @@ static int __rpc_request_handler(const nid_t *nid, const sockid_t *sockid,
         mbuffer_init(&rpc_request->buf, 0);
         mbuffer_merge(&rpc_request->buf, buf);
 
-#if 0
-        if (unlikely(head->master_magic != ng.master_magic)) {
-                DWARN("got stale msg, master_magic 0x%x -> 0x%x\n", ng.master_magic, head->master_magic);
-                handler = __request_stale;
-        } else {
-                handler = prog->handler ? prog->handler : __request_nosys;
-        }
-#else
         UNIMPLEMENTED(__NULL__);
         handler = prog->handler ? prog->handler : __request_nosys;
-#endif
-        
-        schedule_task_new("rpc", handler,
-                          rpc_request, head->priority);
+
+        if (head->coreid == (uint32_t)-1) {
+                schedule_task_new("rpc", handler,
+                                  rpc_request, head->priority);
+        } else {
+                DINFO("core request\n");
+
+                ret = core_request(head->coreid, -1, "rpc_request",
+                                   __core_request, handler, rpc_request,
+                                   head->priority);
+                if (ret)
+                        GOTO(err_ret, ret);
+                
+        }
 
         return 0;
 err_ret:

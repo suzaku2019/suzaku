@@ -122,12 +122,7 @@ static void __request_handler(void *arg)
         return ;
 err_ret:
         mbuffer_free(&buf);
-        if (sockid.type == SOCKID_CORENET) {
-                DBUG("corenet\n");
-                corerpc_reply_error(&sockid, &msgid, ret);
-        } else {
-                rpc_reply_error(&sockid, &msgid, ret);
-        }
+        corerpc_reply_error_union(&sockid, &msgid, ret);
 
         DBUG("error op %u from %s, id (%u, %x)\n", req.op,
              _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
@@ -458,7 +453,7 @@ static int __mds_srv_paset(const sockid_t *sockid, const msgid_t *msgid, buffer_
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        corerpc_reply(sockid, msgid, NULL, 0);
+        corerpc_reply_union(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -496,10 +491,10 @@ int mds_rpc_paset(const nid_t *nid, const chkinfo_t *chkinfo, uint64_t prev_vers
 
         req->buflen = count;
 
-        ret = corerpc_postwait("mds_rpc_paset", &coreid,
+        ret = corerpc_postwait_union("mds_rpc_paset", &coreid,
                                req, sizeof(*req) + count,
                                NULL, NULL,
-                               MSG_MDS_CORE, 0, _get_timeout());
+                               MSG_MDS, 0, _get_timeout());
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -510,31 +505,6 @@ int mds_rpc_paset(const nid_t *nid, const chkinfo_t *chkinfo, uint64_t prev_vers
         return 0;
 err_ret:
         mem_cache_free(MEM_CACHE_4K, buf);
-        return ret;
-}
-
-static int __pa_srv_get__(va_list ap)
-{
-        const chkid_t *chkid = va_arg(ap, const chkid_t *);
-        chkinfo_t *chkinfo = va_arg(ap, chkinfo_t *);
-
-        va_end(ap);
-        
-        return pa_srv_get(chkid, chkinfo);
-}
-
-static int __pa_srv_get(const coreid_t *coreid, const chkid_t *chkid,
-                                     chkinfo_t *chkinfo)
-{
-        int ret;
-
-        ret = core_request(coreid->idx, -1, __FUNCTION__,
-                           __pa_srv_get__, chkid, chkinfo);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        return 0;
-err_ret:
         return ret;
 }
 
@@ -564,20 +534,11 @@ static int __mds_srv_paget(const sockid_t *sockid, const msgid_t *msgid, buffer_
         DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(&req->chkid));
         
         chkinfo = (void *)_chkinfo;
-        if (likely(sockid->type == SOCKID_CORENET)) {
-                ret = pa_srv_get(&req->chkid, chkinfo);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+        ret = pa_srv_get(&req->chkid, chkinfo);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
         
-                corerpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
-        } else {
-                ret = __pa_srv_get(coreid, &req->chkid, chkinfo);
-                if (unlikely(ret)) {
-                        GOTO(err_ret, ret);
-                }
-
-                rpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
-        }
+        corerpc_reply_union(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
 
         DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(&req->chkid));
 
@@ -621,25 +582,16 @@ int mds_rpc_paget(const nid_t *nid, const chkid_t *chkid, chkinfo_t *chkinfo)
 
         req->buflen = count;
 
-        if (likely(ng.daemon)) {
-                buffer_t rbuf;
-                mbuffer_init(&rbuf, 0);
-                ret = corerpc_postwait("mds_rpc_paget", &coreid,
-                                       req, sizeof(*req) + count,
-                                       NULL, &rbuf,
-                                       MSG_MDS_CORE, 0, _get_timeout());
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
+        buffer_t rbuf;
+        mbuffer_init(&rbuf, 0);
+        ret = corerpc_postwait_union("mds_rpc_paget", &coreid,
+                               req, sizeof(*req) + count,
+                               NULL, &rbuf,
+                               MSG_MDS, 0, _get_timeout());
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
 
-                mbuffer_popmsg(&rbuf, chkinfo, rbuf.len);
-        } else {
-                ret = rpc_request_wait("range_rpc_chunk_getinfo", &coreid.nid,
-                                       req, sizeof(*req) + count,
-                                       chkinfo, NULL,
-                                       MSG_MDS, 0, _get_timeout());
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-        }
+        mbuffer_popmsg(&rbuf, chkinfo, rbuf.len);
 
         DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
         
@@ -673,7 +625,7 @@ int mds_rpc_init()
         __request_set_handler(MDS_PAGET, __mds_srv_paget, "mds_srv_paget");
 
         rpc_request_register(MSG_MDS, __request_handler, NULL);
-        corerpc_register(MSG_MDS_CORE, __request_handler, NULL);
+        corerpc_register(MSG_MDS, __request_handler, NULL);
         
         return 0;
 err_ret:

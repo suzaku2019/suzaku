@@ -12,26 +12,12 @@
 #include "ynet_rpc.h"
 #include "dbg.h"
 
-/*int corenet_rdma_write_seg_free(void *arg)
-{
-        ynet_net_head_t *net_rep = arg;
-
-        mbuffer_free(&net_rep->reply_buf);
-        mem_cache_free(MEM_CACHE_512, arg);
-
-        return 0;
-} */
-
+#if ENABLE_RDMA
 void rpc_reply_prep1(const msgid_t *msgid, buffer_t *buf, buffer_t *data)
 {
         int ret;
         ynet_net_head_t *net_rep;
         
-       /* net_rep = mem_cache_calloc(MEM_CACHE_512, 1);
- 
-        ret = mbuffer_initwith(buf, (void *)net_rep, sizeof(ynet_net_head_t), (void *)net_rep, corenet_rdma_write_seg_free);
-        if (unlikely(ret))
-                UNIMPLEMENTED(__DUMP__);*/
         ret = mbuffer_init(buf, sizeof(ynet_net_head_t));
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
@@ -46,6 +32,7 @@ void rpc_reply_prep1(const msgid_t *msgid, buffer_t *buf, buffer_t *data)
         net_rep->blocks = 0;
         net_rep->load = core_latency_get();;
         net_rep->priority = 0;
+        net_rep->coreid = -1;
         net_rep->time = gettime();
 
         mbuffer_init(&net_rep->reply_buf, 0);
@@ -53,6 +40,7 @@ void rpc_reply_prep1(const msgid_t *msgid, buffer_t *buf, buffer_t *data)
 
         DBUG("msgid %d.%d\n", net_rep->msgid.idx, net_rep->msgid.figerprint);
 }
+#endif
 
 void rpc_reply_prep(const msgid_t *msgid, buffer_t *buf, buffer_t *data, int flag)
 {
@@ -74,6 +62,7 @@ void rpc_reply_prep(const msgid_t *msgid, buffer_t *buf, buffer_t *data, int fla
         net_rep->priority = 0;
         net_rep->load = core_latency_get();
         net_rep->time = gettime();
+        net_rep->coreid = -1;
 
         if (data) {
                 if (flag) {
@@ -81,15 +70,18 @@ void rpc_reply_prep(const msgid_t *msgid, buffer_t *buf, buffer_t *data, int fla
                         net_rep->blocks = data->len;
                         mbuffer_merge(buf, data);
                 } else {
+                        UNIMPLEMENTED(__DUMP__);
+#if ENABLE_RDMA
                         mbuffer_init(&net_rep->reply_buf, 0);
                         mbuffer_reference(&net_rep->reply_buf, data);
+#endif
                 }
         }
 
         DBUG("msgid %d.%d\n", net_rep->msgid.idx, net_rep->msgid.figerprint);
 }
 
- void rpc_reply1(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
+void rpc_reply1(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
 {
         int ret;
         buffer_t buf;
@@ -148,6 +140,7 @@ void rpc_reply_error_prep(const msgid_t *msgid, buffer_t *buf, int _error)
         net_rep->priority = 0;
         net_rep->load = core_latency_get();
         net_rep->time = gettime();
+        net_rep->coreid = -1;
 
         net_err = (void *)net_rep->buf;
 
@@ -181,6 +174,7 @@ void rpc_reply_error(const sockid_t *sockid, const msgid_t *msgid, int _error)
         net_rep->priority = 0;
         net_rep->load = core_latency_get();
         net_rep->time = gettime();
+        net_rep->coreid = -1;
 
         net_err = (void *)net_rep->buf;
 

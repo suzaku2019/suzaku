@@ -142,7 +142,7 @@ err_ret:
         return ret;
 }
 
-static int IO_FUNC __disk_read(const diskid_t *diskid, const io_t *io, buffer_t *buf)
+int IO_FUNC disk_io_read(const diskid_t *diskid, const io_t *io, buffer_t *buf)
 {
         int ret, idx;
         disk_t *disk;
@@ -167,36 +167,3 @@ err_ref:
 err_ret:
         return ret;
 }
-
-int IO_FUNC __disk_read_va(va_list ap)
-{
-        const diskid_t *diskid = va_arg(ap, const diskid_t *);
-        const io_t *io = va_arg(ap, const io_t *);
-        buffer_t*buf = va_arg(ap, buffer_t *);
-
-        va_end(ap);
-        
-        return __disk_read(diskid, io, buf);
-}
-
-
-int IO_FUNC disk_io_read(const diskid_t *diskid, const io_t *io, buffer_t *buf)
-{
-        int ret;
-
-        if (likely(core_self())) {
-                ret = __disk_read(diskid, io, buf);
-                if (ret)
-                        GOTO(err_ret, ret);
-        } else {
-                ret = core_request(core_hash(&io->id), -1, "disk_write",
-                                   __disk_read_va, diskid, io, buf);
-                if (ret)
-                        GOTO(err_ret, ret);
-        }
-
-        return 0;
-err_ret:
-        return ret;
-}
-

@@ -495,7 +495,9 @@ def test_init():
     cluster.create([socket.gethostname()])
 
 def test(pool):
-    exec_shell("python2 %s/test_list.py --length 5 --pool %s --home %s >> %s/fileop.log 2>&1" % (CUR_PATH, pool, TEST_PATH, LOG_PATH))
+    cmd = "python2 %s/test_list.py --length 5 --pool %s --home %s >> %s/fileop.log 2>&1" % (CUR_PATH, pool, TEST_PATH, LOG_PATH)
+    print cmd
+    exec_shell(cmd)
     dmsg("test all successfully")
 
 def test_exec(args):
@@ -539,7 +541,7 @@ def new_test(args):
     pool = "default"
     os.system("rm -rf %s" % (LOG_PATH))
     os.system("mkdir -p %s" % (LOG_PATH))
-    cmd = os.path.abspath(os.path.split(os.path.realpath(__file__))[0]) + "/docker.py create --pool %s >> %s/docker.log 2>&1" % (pool, LOG_PATH)
+    cmd = "python2 " + os.path.abspath(os.path.split(os.path.realpath(__file__))[0]) + "/docker.py create --pool %s >> %s/docker.log 2>&1" % (pool, LOG_PATH)
     print cmd
     os.system(cmd)
     

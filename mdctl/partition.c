@@ -71,7 +71,7 @@ static void __part_update(part_t *part, const char *_part)
 
         qsort(array, count + 1, sizeof(int32_t), __part_cmp);
 
-#if 1
+#if 0
         for(int i = 0; i < count + 1; i++) {
                 DINFO("part %s[%u] : %ju\n", part->name, i, array[i]);
         }

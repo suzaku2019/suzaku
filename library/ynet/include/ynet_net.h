@@ -47,9 +47,10 @@ typedef struct  {
         uint32_t blocks;
         msgid_t msgid;
         uint32_t time;
+        uint32_t coreid;
         uint32_t master_magic;
         uint64_t load;
-        buffer_t reply_buf;
+        //buffer_t reply_buf;
         char buf[0];
 } ynet_net_head_t;
 
