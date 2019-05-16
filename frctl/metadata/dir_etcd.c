@@ -43,8 +43,6 @@ static int dir_lookup(const volid_t *volid, const fileid_t *parent,
         if (type)
                 *type = 0;
 
-        UNIMPLEMENTED(__WARN__);
-
         return 0;
 err_ret:
         return ret;

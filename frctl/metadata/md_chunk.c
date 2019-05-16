@@ -153,7 +153,7 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
                 info = &_info[i];
                 info->diskid = *diskid;
 
-                ret = network_connect(&diskid->id, NULL, 1, 1);
+                ret = disk_connect(&diskid->id, NULL, 1, 1);
                 if (ret) {
                         DINFO("%s not online\n", netable_rname_nid(&diskid->id));
                         info->online = 0;
@@ -239,7 +239,7 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
                                       netable_rname_nid(&newdisk), 
                                       DISKID_ARG(&diskid->id));
 
-                                UNIMPLEMENTED(__DUMP__);
+                                UNIMPLEMENTED(__WARN__);
 #if 0
                                 ret = rm_push(&diskid->id, -1, chkid);
                                 if (ret)

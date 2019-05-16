@@ -205,6 +205,7 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_alloc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_sync.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_read.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_fs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bactl/disk_redis.c

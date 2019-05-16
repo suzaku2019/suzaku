@@ -150,9 +150,14 @@ static int __conn_add(const nid_t *nid)
         if (!net_islocal(nid)) {
                 ret = mds_rpc_getstat(nid, &instat);
                 if (ret) {
-                        DINFO("%s nid %d not online\n", info->name, nid->id);
+                        DINFO("mds master not online\n");
                         goto out;
                 }
+
+                if (instat.online == 0) {
+                        DINFO("%s nid %d not online\n", info->name, nid->id);
+                        goto out;
+                }                        
         }
 
         DINFO("connect to %u %s\n", nid->id, info->name);

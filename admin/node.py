@@ -84,9 +84,6 @@ class Node:
 
             
     def start(self, role=None, service=None, op="all"):
-        lfile = "/var/run/uss.start.lock"
-        lock = lock_file(lfile)
-
         check_sysctl(self.config, fix = True)
 
         cmd = "iptables -F"
@@ -113,12 +110,7 @@ class Node:
         if op == "all":
             self._start_service()
 
-        os.system("rm " + lfile)
-
     def restart(self, role=None, service=None, op="all"):
-        lfile = "/var/run/uss.start.lock"
-        lock = lock_file(lfile)
-
         #stop 
         if (service is not None) and (role is not None):
             i = Instence(role, service, self.config)
@@ -147,8 +139,6 @@ class Node:
 
         if op == "all":
             self._start_service()
-
-        os.system("rm " + lfile)
         
     def stop(self, role=None, service=None):
         lfile = "/var/run/uss.stop.lock"
@@ -1274,14 +1264,6 @@ class Node:
             else:
                 raise Exp(e.errno, "del group %s fail, errmsg:(%s)" % (groupname, e.err))
 
-    def worm(self, update=None):
-        if self.is_master():
-            if update:
-                cmd = "uss.worm --update"
-                exec_shell(cmd)
-        else:
-            dwarn("need run with master!")
-
     def raidlist(self):
         self.disk_manage = DiskManage(self)
         try:
@@ -1602,14 +1584,6 @@ if __name__ == "__main__":
     parser_groupdel = subparsers.add_parser('groupdel', help='del a group')
     parser_groupdel.add_argument("--name", required=True, help="group name")
     parser_groupdel.set_defaults(func=_groupdel)
-
-    def _wrom(args):
-        node = Node()
-        node.worm(args.update)
-    parser_worm = subparsers.add_parser("worm", help="worm operation")
-    parser_worm.add_argument("-u", "--update", action="store_true", dest="update",
-                             help="update worm clock time")
-    parser_worm.set_defaults(func=_wrom)
 
     #disk operation
     def _disk_add(args):

@@ -338,6 +338,7 @@ static int __network_connect_wait(const nid_t *nid, int timeout, int force)
 
         if (!netable_connectable(nid, force)) {
                 ret = EAGAIN;
+                DWARN("%s need try again \n", netable_rname_nid(nid));
                 GOTO(err_ret, ret);
         }
 

@@ -161,7 +161,8 @@ static int __pa_srv_set__(pa_entry_t *ent, const chkinfo_t *chkinfo,
         if (prev == NULL) {
                 YASSERT(prev_version == (LLU)-1);
         } else {
-                if (prev->md_version != prev_version) {
+                if (prev_version != (uint64_t)-1
+                    && prev->md_version != prev_version) {
                         ret = ESTALE;
                         GOTO(err_ret, ret);
                 }
@@ -203,8 +204,8 @@ err_ret:
         return ret;
 }
 
-static int __pa_srv_set(pa_entry_t *ent,
-                        const chkinfo_t *chkinfo, uint64_t prev_version)
+static int __pa_srv_set(pa_entry_t *ent, const chkinfo_t *chkinfo,
+                        uint64_t prev_version)
 {
         int ret;
         const chkid_t *chkid = &ent->id;
@@ -490,8 +491,8 @@ int pa_srv_set(const chkinfo_t *chkinfo, uint64_t prev_version)
 
         __pa_cid2tid(chkid, &tid);
 
-        DINFO("set "CHKID_FORMAT" @ "CHKID_FORMAT"\n", CHKID_ARG(chkid),
-              CHKID_ARG(&tid));
+        DINFO("set "CHKID_FORMAT" @ "CHKID_FORMAT", prev version %llu\n", CHKID_ARG(chkid),
+              CHKID_ARG(&tid), prev_version);
         
         pa_srv_t *pa_srv = __pa_srv(&tid);
         ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
@@ -616,6 +617,11 @@ static int __pa_srv_recovery(pa_entry_t *ent)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        ret = chunk_recovery(ent->chunk);
+        if (unlikely(ret)) {
+                GOTO(err_ret, ret);
+        }
+        
         return 0;
 err_ret:
         return ret;

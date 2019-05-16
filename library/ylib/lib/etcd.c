@@ -765,6 +765,8 @@ int etcd_lock_init(etcd_lock_t *lock, const char *prefix, const char *key,
 {
         int ret;
 
+        YASSERT(ttl > 0 && ttl < 30);
+        
         ret = sem_init(&lock->sem, 0, 0);
         if (ret)
                 GOTO(err_ret, ret);

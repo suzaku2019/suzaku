@@ -88,6 +88,15 @@ static int __sdfs_chunk_push(const nid_t *nid, const chkid_t *chkid, int fd, int
         buffer_t buf;
         io_t io;
 
+        ret = cds_rpc_create(nid, chkid, count, 0);
+        if (ret) {
+                if (ret == EEXIST) {
+                        DWARN(CHKID_FORMAT" @ %s already exist\n",
+                              CHKID_ARG(chkid), disk_rname(nid));
+                } else 
+                        GOTO(err_ret, ret);
+        }
+        
         ret = ymalloc((void**)&_buf, Y_BLOCK_MAX);
         if (ret)
                 GOTO(err_ret, ret);
@@ -109,7 +118,7 @@ static int __sdfs_chunk_push(const nid_t *nid, const chkid_t *chkid, int fd, int
                         GOTO(err_free, ret);
 
                 io_init(&io, chkid, size, offset, 0);
-                ret = cds_rpc_write(nid, &io, &buf);
+                ret = cds_rpc_sync(nid, &io, &buf);
                 if (ret)
                         GOTO(err_free1, ret);
 
@@ -146,7 +155,7 @@ int chunk_recovery_sync(const chkinfo_t *chkinfo)
                         continue;
                 }
 
-                ret = network_connect(&reploc->id, NULL, 1, 1);
+                ret = disk_connect(&reploc->id, NULL, 1, 1);
                 if (ret)
                         GOTO(err_ret, ret);
 
@@ -330,7 +339,7 @@ static int __sdfs_chunk_ec_push__(const nid_t *nid, const chkid_t *chkid, buffer
                         GOTO(err_ret, ret);
 
                 io_init(&io, chkid, size, offset, 0);
-                ret = cds_rpc_write(nid, &io, &buf);
+                ret = cds_rpc_sync(nid, &io, &buf);
                 if (ret)
                         GOTO(err_ret, ret);
 
@@ -424,7 +433,7 @@ int chunk_recovery_sync_ec(const ec_t *ec, const chkinfo_t *chkinfo)
                         src_count++;
                         src_in_err[i] = 0;
 
-                        ret = network_connect(&reploc->id, NULL, 1, 1);
+                        ret = disk_connect(&reploc->id, NULL, 1, 1);
                         if (ret)
                                 GOTO(err_ret, ret);
                 }

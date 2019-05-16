@@ -225,7 +225,6 @@ err_ret:
         return ret;
 }
 
-
 static int __mds_loop(const char *home)
 {
         int ret;

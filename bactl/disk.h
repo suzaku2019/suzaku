@@ -111,6 +111,7 @@ int disk_create(const diskid_t *diskid, disk_t **_disk);
 void disk_destroy(disk_t *disk);
 int disk_config_load(const char *home, int idx, ...);
 
+int disk_io_sync(const diskid_t *diskid, const io_t *io, const buffer_t *buf);
 int disk_io_read(const diskid_t *diskid, const io_t *io, buffer_t *buf);
 int disk_io_write(const diskid_t *diskid, const io_t *io, const buffer_t *buf);
 int disk_io_create(const diskid_t *diskid, const chkid_t *chkid, uint32_t size,

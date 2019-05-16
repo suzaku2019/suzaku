@@ -33,6 +33,7 @@ extern net_global_t ng;
 
 typedef enum {
         CDS_NULL = 400,
+        CDS_SYNC,
         CDS_WRITE,
         CDS_READ,
         CDS_CONNECT,
@@ -597,12 +598,115 @@ err_ret:
         return ret;
 }
 
+static int __cds_srv_sync(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
+{
+        int ret;
+        msg_t *req;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t buflen;
+        const nid_t *writer;
+        const io_t *io;
+        const diskid_t *diskid;
+
+        req = (void *)buf;
+        mbuffer_get(_buf, req, sizeof(*req));
+        buflen = req->buflen;
+        ret = mbuffer_popmsg(_buf, req, buflen + sizeof(*req));
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        _opaque_decode(req->buf, buflen,
+                       &writer, NULL,
+                       &diskid, NULL,
+                       &io, NULL,
+                       NULL);
+
+        DBUG("sync chunk "CHKID_FORMAT", off %llu, len %u:%u\n",
+              CHKID_ARG(&req->chkid), (LLU)io->offset, io->size, _buf->len);
+
+        YASSERT(_buf->len == io->size);
+
+        ret = disk_io_sync(diskid, io, _buf);
+        if (unlikely(ret)) {
+                GOTO(err_ret, ret);
+        }
+
+        corerpc_reply_union(sockid, msgid, NULL, 0);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+int cds_rpc_sync(const diskid_t *diskid, const io_t *io, const buffer_t *_buf)
+{
+        int ret;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t count;
+        msg_t *req;
+        nid_t nid;        
+
+        ret = d2n_nid(diskid, &nid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ret = network_connect(&nid, NULL, 1, 0);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ANALYSIS_BEGIN(0);
+
+        YASSERT(_buf->len == io->size);
+
+        req = (void *)buf;
+        req->op = CDS_SYNC;
+        req->chkid = io->id;
+        _opaque_encode(&req->buf, &count,
+                       net_getnid(), sizeof(nid_t),
+                       diskid, sizeof(*diskid),
+                       io, sizeof(*io),
+                       NULL);
+
+        req->buflen = count;
+
+        DBUG("sync %u\n", sizeof(*req) + count + _buf->len);
+        
+        coreid_t coreid;
+        ret = chkid2coreid(&io->id, &nid, &coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        DBUG("corenet sync\n");
+        ret = corerpc_postwait_union("cds_rpc_sync", &coreid,
+                               req, sizeof(*req) + count, _buf,
+                               NULL, MSG_REPLICA, io->size, _get_timeout());
+        if (unlikely(ret)) {
+                YASSERT(ret != EINVAL);
+                GOTO(err_ret, ret);
+        }
+
+        DBUG("sync return\n");
+        
+        ANALYSIS_QUEUE(0, IO_WARN, NULL);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
 int cds_rpc_init()
 {
         DINFO("replica rpc init\n");
 
         __request_set_handler(CDS_READ, __cds_srv_read, "cds_srv_read");
         __request_set_handler(CDS_WRITE, __cds_srv_write, "cds_srv_write");
+        __request_set_handler(CDS_SYNC, __cds_srv_sync, "cds_srv_sync");
         __request_set_handler(CDS_CONNECT, __cds_srv_connect, "cds_srv_connect");
         __request_set_handler(CDS_CREATE, __cds_srv_create, "cds_srv_create");
         __request_set_handler(CDS_STAT, __cds_srv_stat, "cds_srv_stat");
