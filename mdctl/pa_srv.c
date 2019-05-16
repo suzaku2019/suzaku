@@ -302,7 +302,7 @@ static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo)
         chunk_t *chunk;
         const chkid_t *chkid = &chkinfo->chkid;
 
-        ret = plock_rdlock(&ent->plock);
+        ret = plock_wrlock(&ent->plock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -324,6 +324,7 @@ static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo)
         mbuffer_free(&buf);
 
         ent->chunk = chunk;
+        plock_unlock(&ent->plock);
         
         return 0;
 err_free:
@@ -489,7 +490,8 @@ int pa_srv_set(const chkinfo_t *chkinfo, uint64_t prev_version)
 
         __pa_cid2tid(chkid, &tid);
 
-        DINFO("set "CHKID_FORMAT" @ "CHKID_FORMAT"\n", CHKID_ARG(chkid), CHKID_ARG(&tid));
+        DINFO("set "CHKID_FORMAT" @ "CHKID_FORMAT"\n", CHKID_ARG(chkid),
+              CHKID_ARG(&tid));
         
         pa_srv_t *pa_srv = __pa_srv(&tid);
         ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
@@ -549,7 +551,7 @@ static int __pa_srv_get(pa_entry_t *ent, const chkid_t *chkid,
         ret = ringlock_check(chkid, RINGLOCK_MDS, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
-        
+
         ret = __pa_srv_get__(ent, chkid, chkinfo);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
@@ -592,7 +594,62 @@ int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo)
 
         DINFO("get "CHKID_FORMAT" @ "CHKID_FORMAT" success\n",
               CHKID_ARG(chkid), CHKID_ARG(&tid));
-        //CHKINFO_DUMP(chkinfo, D_INFO);
+        
+        __pa_srv_entry_release(pa_srv);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_release:
+        __pa_srv_entry_release(pa_srv);
+err_ret:
+        return ret;
+}
+
+static int __pa_srv_recovery(pa_entry_t *ent)
+{
+        int ret;
+
+        DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(&ent->id));
+        
+        ret = ringlock_check(&ent->id, RINGLOCK_MDS, 0, &ent->token);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+
+int pa_srv_recovery(const chkid_t *chkid)
+{
+        int ret;
+        pa_entry_t *ent;
+        chkid_t tid;
+
+        tid = *chkid;
+
+        DINFO("recovery "CHKID_FORMAT" @ "CHKID_FORMAT"\n",
+              CHKID_ARG(chkid), CHKID_ARG(&tid));
+        
+        pa_srv_t *pa_srv = __pa_srv(&tid);
+        ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = plock_wrlock(&ent->plock);
+        if (unlikely(ret))
+                GOTO(err_release, ret);
+        
+        ret = __pa_srv_recovery(ent);
+        if (unlikely(ret)) {
+                GOTO(err_lock, ret);
+        }
+
+        plock_unlock(&ent->plock);
+
+        DINFO("recovery "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
         
         __pa_srv_entry_release(pa_srv);
         

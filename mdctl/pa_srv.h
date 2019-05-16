@@ -13,6 +13,7 @@
 #define PA_ITEM_COUNT ((SDFS_CHUNK_SPLIT - PA_INFO_AREA) / PA_ITEM_SIZE)
 #define PA_HASH (32)
 
+int pa_srv_recovery(const chkid_t *chkid);
 int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo);
 int pa_srv_set(const chkinfo_t *chkinfo, uint64_t prev_version);
 int pa_srv_create();

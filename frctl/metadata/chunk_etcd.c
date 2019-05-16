@@ -92,7 +92,7 @@ static int __chunk_create(const volid_t *volid, const chkinfo_t *chkinfo)
         if (chkinfo->chkid.type == ftype_file) {
                 return __chunk_create__(volid, chkinfo);
         } else {
-                return mds_rpc_paset(net_getnid(), chkinfo, -1);
+                return mds_rpc_paset(&chkinfo->chkid, chkinfo, -1);
         }
 }
 
@@ -101,7 +101,7 @@ static int __chunk_load(const volid_t *volid, const chkid_t *chkid, chkinfo_t *c
         if (chkid->type == ftype_file) {
                 return __chunk_load__(volid, chkid, chkinfo);
         } else {
-                return mds_rpc_paget(net_getnid(), chkid, chkinfo);
+                return mds_rpc_paget(chkid, chkinfo);
         }
 }
 
@@ -110,7 +110,7 @@ static int __chunk_update(const volid_t *volid, const chkinfo_t *chkinfo)
         if (chkinfo->chkid.type == ftype_file) {
                 return __chunk_update__(volid, chkinfo);
         } else {
-                return mds_rpc_paset(net_getnid(), chkinfo, -1);
+                return mds_rpc_paset(&chkinfo->chkid, chkinfo, -1);
         }
 }
 

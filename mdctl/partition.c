@@ -568,4 +568,3 @@ int part_location(const chkid_t *chkid, int type, coreid_t *coreid)
 err_ret:
         return ret;
 }
-

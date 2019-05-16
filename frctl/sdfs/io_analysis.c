@@ -212,7 +212,7 @@ static void *__io_analysis_rept(void *arg)
                          io_analysis->read_bytes, io_analysis->write_bytes,
                          core_latency_get());
 
-                mds_rpc_set(net_getnid(), path, buf, strlen(buf) + 1);
+                mds_rpc_set(path, buf, strlen(buf) + 1);
 
                 ret = sy_spin_lock(&__io_analysis__->lock);
                 if (ret)
@@ -248,7 +248,7 @@ int io_analysis_dump(const char *type)
         snprintf(path, MAX_PATH_LEN, "/analysis/%s", type);
 retry:
         buflen = MON_ENTRY_MAX;
-        ret = mds_rpc_get(net_getnid(), path, offset, buf, &buflen);
+        ret = mds_rpc_get(path, offset, buf, &buflen);
         if (ret)
                 GOTO(err_ret, ret);
 

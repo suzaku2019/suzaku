@@ -281,8 +281,6 @@ static int __range_srv_recovery(const sockid_t *sockid, const msgid_t *msgid,
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
         const nid_t *nid;
         const coreid_t *coreid;
-        io_token_t *token;
-        char _token[IO_TOKEN_MAX];
 
         __getmsg(_buf, &req, &buflen, buf);
 
@@ -291,14 +289,12 @@ static int __range_srv_recovery(const sockid_t *sockid, const msgid_t *msgid,
                        &coreid, NULL,
                        NULL);
 
-        token = (void *)_token;
         ret = range_ctl_chunk_recovery(&req->chkid);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
         }
 
-        DBUG("corenet write\n");
-        corerpc_reply_union(sockid, msgid, token, IO_TOKEN_SIZE(token->repnum));
+        corerpc_reply_union(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 

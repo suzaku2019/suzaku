@@ -12,6 +12,7 @@
 #include "volume.h"
 #include "disk.h"
 #include "range.h"
+#include "mds_rpc.h"
 #include "md_lib.h"
 
 void show_help(char *prog)
@@ -20,24 +21,33 @@ void show_help(char *prog)
         fprintf(stderr, "%s (id)_v(version) -s idx:available\n", prog);
 }
 
+static int __chunk_recovery__(const chkid_t *chkid)
+{
+        if (chkid->type == ftype_raw) {
+                return range_chunk_recovery(chkid);
+        } else {
+                return mds_rpc_recovery(chkid);
+        }
+}
+
 static void __chunk_recovery(const chkinfo_t *chkinfo)
 {
         int ret;
 
-        range_chunk_recovery(&chkinfo->chkid);
+        __chunk_recovery__(&chkinfo->chkid);
         return;
         
         for (int i = 0; i < (int)chkinfo->repnum; i++) {
                 const reploc_t *reploc = &chkinfo->diskid[i];
 
                 if (reploc->status) {
-                        range_chunk_recovery(&chkinfo->chkid);
+                        __chunk_recovery__(&chkinfo->chkid);
                         break;
                 }
 
                 ret = disk_connect(&reploc->id, NULL, 0, 0);
                 if (ret) {
-                        range_chunk_recovery(&chkinfo->chkid);
+                        __chunk_recovery__(&chkinfo->chkid);
                         break;
                 }
         }
@@ -100,7 +110,7 @@ int main(int argc, char *argv[])
 
         (void) verbose;
         
-        dbg_info(0);
+        //dbg_info(0);
 
         prog = strrchr(argv[0], '/');
         if (prog)

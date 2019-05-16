@@ -140,8 +140,6 @@ static int __rpc_request_handler(const nid_t *nid, const sockid_t *sockid,
                 schedule_task_new("rpc", handler,
                                   rpc_request, head->priority);
         } else {
-                DINFO("core request\n");
-
                 ret = core_request(head->coreid, -1, "rpc_request",
                                    __core_request, handler, rpc_request,
                                    head->priority);
