@@ -75,13 +75,13 @@ typedef struct {
         repsess_t repsess[0];
 } io_token_t;
 
-
 typedef struct __chunk__ {
         plock_t plock;
         ltoken_t ltoken;
         chkinfo_t *chkinfo;
         chkstat_t *chkstat;
         ec_t ec;
+        uint64_t version;
         char __chkinfo__[CHKINFO_MAX];
         char __chkstat__[CHKSTAT_MAX];
 
@@ -90,19 +90,11 @@ typedef struct __chunk__ {
         int (*recovery)(struct __chunk__ *);
 } chunk_t;
 
-typedef struct __chunk1__ {
-        plock_t plock;
-        ec_t ec;
-        ltoken_t ltoken;
-
-        
-        chkinfo_t *chkinfo;
-        chkstat_t *chkstat;
-
-        int (*read)(const struct __chunk1__ *, io_t *);
-        int (*write)(const struct __chunk1__ *, io_t *);
-        int (*recovery)(struct __chunk1__ *);
-} chunk1_t;
+typedef struct {
+        uint64_t clock;
+        int count;
+        nid_t array[0];
+} vfm_t;
 
 
 #define IO_TOKEN_SIZE(__repnum__) (sizeof(io_token_t) + sizeof(repsess_t) * __repnum__)
@@ -119,14 +111,14 @@ int chunk_replica_recovery(chunk_t *chunk);
 
 int chunk_recovery_sync(const chkinfo_t *chkinfo);
 
-int chunk_update(chunk_t *chunk, const chkinfo_t *chkinfo);
-int chunk_write(chunk_t *chunk, io_t *io);
-int chunk_read(chunk_t *chunk, io_t *io);
-int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo,
+int chunk_update(chunk_t *chunk, const chkinfo_t *chkinfo, uint64_t version);
+int chunk_write(const vfm_t *vfm, chunk_t *chunk, io_t *io);
+int chunk_read(const vfm_t *vfm, chunk_t *chunk, io_t *io);
+int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, uint64_t version,
                const ltoken_t *ltoken, const ec_t *ec, int flag);
 void chunk_close(chunk_t **_chunk);
-int chunk_get_token(chunk_t *chunk, int op, io_token_t *token);
-int chunk_recovery(chunk_t *chunk);
+int chunk_get_token(const vfm_t *vfm, chunk_t *chunk, int op, io_token_t *token);
+int chunk_recovery(const vfm_t *vfm, chunk_t *chunk);
 
 void chkinfo2str(const chkinfo_t *chkinfo, char *buf);
 

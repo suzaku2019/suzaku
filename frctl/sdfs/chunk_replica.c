@@ -179,6 +179,7 @@ int chunk_replica_recovery(chunk_t *chunk)
         reploc_t *reploc;
         chkid_t *chkid = &chunk->chkinfo->chkid;
         const ec_t *ec = &chunk->ec;
+        uint64_t version;
 
         DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         
@@ -212,9 +213,12 @@ int chunk_replica_recovery(chunk_t *chunk)
                 DBUG("status %u\n", reploc->status);
         }
 
-        ret = md_chunk_update(chkinfo, NULL);
+        version = chunk->version;
+        ret = md_chunk_update(chkinfo, &version);
         if (ret)
                 GOTO(err_ret, ret);
+
+        chunk_update(chunk, chkinfo, version);
         
         DINFO("recovery "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
         

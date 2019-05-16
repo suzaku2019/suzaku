@@ -153,7 +153,7 @@ static int __pa_srv_write(pa_entry_t *ent, const char *_buf, int buflen,
         mbuffer_appendmem(&buf, record, record->size);
         io_init(&io, &ent->tid, record->size, offset, 0);
         io.buf = &buf;
-        ret = chunk_write(ent->chunk, &io);
+        ret = chunk_write(NULL, ent->chunk, &io);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -179,7 +179,7 @@ static int __pa_srv_read(pa_entry_t *ent, char *_buf, int *buflen,
         mbuffer_init(&buf, 0);
         io_init(&io, &ent->tid, sizeof(*record) + *buflen, offset, 0);
         io.buf = &buf;
-        ret = chunk_read(ent->chunk, &io);
+        ret = chunk_read(NULL, ent->chunk, &io);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -359,7 +359,7 @@ err_ret:
         return ret;
 }
 
-static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo)
+static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo, uint64_t version)
 {
         int ret;
         io_t io;
@@ -371,14 +371,14 @@ static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        ret = chunk_open(&chunk, chkinfo, NULL, NULL, 0);
+        ret = chunk_open(&chunk, chkinfo, version, NULL, NULL, 0);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
         mbuffer_init(&buf, 0);
         io_init(&io, chkid, SDFS_CHUNK_SPLIT, 0, 0);
         io.buf = &buf;
-        ret = chunk_read(chunk, &io);
+        ret = chunk_read(NULL, chunk, &io);
         if (unlikely(ret))
                 GOTO(err_close, ret);
 
@@ -443,15 +443,18 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
         pa_entry_t *ent;
         char _chkinfo[CHKINFO_MAX];
         chkinfo_t *chkinfo = (void *)_chkinfo;
+        uint64_t version;
 
         DINFO("load "CHKID_FORMAT"\n", CHKID_ARG(tid));
         
-        ret = md_chunk_load(tid, chkinfo, NULL);
+        ret = md_chunk_load(tid, chkinfo, &version);
         if (unlikely(ret)) {
                 if (ret == ENOENT) {
                         ret = __pa_srv_chunk_create(tid, chkinfo);
                         if (unlikely(ret))
                                 GOTO(err_ret, ret);
+
+                        version = 0;
                 } else 
                         GOTO(err_ret, ret);
         }
@@ -477,7 +480,7 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
         ent = htab_find(pa_srv->htab, (void *)tid);
         YASSERT(ent);
 
-        ret = __pa_srv_load_item(ent, chkinfo);
+        ret = __pa_srv_load_item(ent, chkinfo, version);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
         
@@ -523,13 +526,14 @@ retry:
         if (ent->chunk == NULL) {
                 char _chkinfo[CHKINFO_MAX];
                 chkinfo_t *chkinfo = (void *)_chkinfo;
+                uint64_t version;
 
-                ret = md_chunk_load(tid, chkinfo, NULL);
+                ret = md_chunk_load(tid, chkinfo, &version);
                 if (unlikely(ret)) {
                         GOTO(err_ret, ret);
                 }
                 
-                ret = __pa_srv_load_item(ent, chkinfo);
+                ret = __pa_srv_load_item(ent, chkinfo, version);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         }
@@ -683,7 +687,7 @@ static int __pa_srv_recovery(pa_entry_t *ent)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = chunk_recovery(ent->chunk);
+        ret = chunk_recovery(NULL, ent->chunk);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
         }

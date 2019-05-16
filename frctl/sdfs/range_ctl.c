@@ -41,6 +41,7 @@ typedef struct {
         plock_t plock;
         ec_t ec;
         ltoken_t token;
+        vfm_t *vfm[RANGE_CHUNK_COUNT];
         plock_t record_lock[VOL_LOCK];
         chunk_t *chunk[RANGE_ITEM_COUNT];
 } range_entry_t;
@@ -281,9 +282,10 @@ STATIC int __range_ctl_chunk_load(const chkid_t *chkid, const ec_t *ec,
         chunk_t *chunk;
         chkinfo_t *chkinfo;
         char _chkinfo[CHKINFO_MAX];
+        uint64_t version;
 
         chkinfo = (void *)_chkinfo;
-        ret = md_chunk_load(chkid, chkinfo, NULL);
+        ret = md_chunk_load(chkid, chkinfo, &version);
         if (unlikely(ret)) {
                 if (ret == ENOENT) {
                         if (flags & O_CREAT) {
@@ -292,12 +294,13 @@ STATIC int __range_ctl_chunk_load(const chkid_t *chkid, const ec_t *ec,
                                         GOTO(err_ret, ret);
                         } else {
                                 chkinfo = NULL;
+                                version = 0;
                         }
                 } else
                         GOTO(err_ret, ret);
         }
 
-        ret = chunk_open(&chunk, chkinfo, NULL, ec, 0);
+        ret = chunk_open(&chunk, chkinfo, version, NULL, ec, 0);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -319,7 +322,7 @@ STATIC int __range_ctl_chunk_create(const chkid_t *chkid, chunk_t *chunk)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = chunk_update(chunk, chkinfo);
+        ret = chunk_update(chunk, chkinfo, 0);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -363,7 +366,7 @@ STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
 
         chunk = ent->chunk[idx];
 retry:
-        ret = chunk_get_token(chunk, op, token);
+        ret = chunk_get_token(NULL, chunk, op, token);
         if (unlikely(ret)) {
                 if (ret == ENOENT && flags == O_CREAT) {
                         ret = __range_ctl_chunk_create(chkid, chunk);
@@ -415,7 +418,6 @@ err_ret:
 STATIC int __range_ctl_chunk_recovery(range_entry_t *ent, const chkid_t *chkid)
 {
         int ret, idx;
-        chunk_t *chunk;
 
         idx = chkid->idx % RANGE_ITEM_COUNT;
         ret = __range_ctl_rec_wrlock(ent, chkid);
@@ -429,8 +431,9 @@ STATIC int __range_ctl_chunk_recovery(range_entry_t *ent, const chkid_t *chkid)
                         GOTO(err_lock, ret);
         }
 
-        chunk = ent->chunk[idx];
-        ret = chunk_recovery(chunk);
+        chunk_t *chunk = ent->chunk[idx];
+        //vfm_t *vfm = ent->vfm[idx % PA_ITEM_COUNT];
+        ret = chunk_recovery(NULL, chunk);
         if (unlikely(ret)) {
                 GOTO(err_lock, ret);
         }

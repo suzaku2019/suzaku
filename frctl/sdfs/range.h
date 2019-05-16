@@ -4,8 +4,8 @@
 #include "chunk.h"
 #include "pa_srv.h"
 
-#define RANGE_ITEM_COUNT ((uint64_t)PA_ITEM_COUNT * 4)
-//#define VS_RANGE_SIZE (RANGE_ITEM_COUNT * SDFS_CHUNK_SPLIT)
+#define RANGE_CHUNK_COUNT (4)
+#define RANGE_ITEM_COUNT ((uint64_t)PA_ITEM_COUNT * RANGE_CHUNK_COUNT)
 
 typedef chkid_t rid_t;
 

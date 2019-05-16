@@ -49,8 +49,8 @@ void chkinfo2str(const chkinfo_t *chkinfo, char *buf)
         }
 }
 
-int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, const ltoken_t *ltoken,
-               const ec_t *ec, int flag)
+int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, uint64_t version,
+               const ltoken_t *ltoken, const ec_t *ec, int flag)
 {
         int ret;
         chunk_t *chunk;
@@ -75,6 +75,8 @@ int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, const ltoken_t *ltoke
                 chunk->chkinfo = NULL;
                 chunk->chkstat = NULL;
         }
+
+        chunk->version = version;
 
         if (ltoken) {
                 chunk->ltoken = *ltoken;
@@ -101,10 +103,11 @@ err_ret:
         return ret;
 }
 
-int chunk_update(chunk_t *chunk, const chkinfo_t *chkinfo)
+int chunk_update(chunk_t *chunk, const chkinfo_t *chkinfo, uint64_t version)
 {
         chunk->chkinfo = (void *)chunk->__chkinfo__;
         chunk->chkstat = (void *)chunk->__chkstat__;
+        chunk->version = version;
 
         CHKINFO_CP(chunk->chkinfo, chkinfo);
         memset(chunk->chkstat, 0x0, CHKSTAT_SIZE(chkinfo->repnum));
@@ -482,12 +485,14 @@ err_ret:
         return ret;
 }
 
-int chunk_read(chunk_t *chunk, io_t *io)
+int chunk_read(const vfm_t *vfm, chunk_t *chunk, io_t *io)
 {
         int ret;
         io_token_t *token;
         char buf[IO_TOKEN_MAX];
 
+        (void) vfm;
+        
         ret = __chunk_session_check(chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -514,12 +519,14 @@ err_ret:
         return ret;
 }
 
-int chunk_write(chunk_t *chunk, io_t *io)
+int chunk_write(const vfm_t *vfm, chunk_t *chunk, io_t *io)
 {
         int ret;
         io_token_t *token;
         char buf[IO_TOKEN_MAX];
 
+        (void) vfm;
+        
         ret = __chunk_session_check(chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -546,9 +553,11 @@ err_ret:
         return ret;
 }
 
-int chunk_get_token(chunk_t *chunk, int op, io_token_t *token)
+int chunk_get_token(const vfm_t *vfm, chunk_t *chunk, int op, io_token_t *token)
 {
         int ret;
+
+        (void) vfm;
 
         ret = __chunk_session_check(chunk);
         if (unlikely(ret))
@@ -571,9 +580,11 @@ err_ret:
         return ret;
 }
 
-int chunk_recovery(chunk_t *chunk)
+int chunk_recovery(const vfm_t *vfm, chunk_t *chunk)
 {
         int ret;
+
+        (void) vfm;
 
         ret = __chunk_session_check(chunk);
         if (unlikely(ret))
