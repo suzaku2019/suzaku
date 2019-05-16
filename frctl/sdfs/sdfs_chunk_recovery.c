@@ -567,7 +567,7 @@ int sdfs_chunk_check(const chkid_t *chkid)
         reploc_t *reploc;
 
         chkinfo = (void *)_chkinfo;
-        ret = md_chunk_load(chkid, chkinfo);
+        ret = md_chunk_load(chkid, chkinfo, NULL);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 

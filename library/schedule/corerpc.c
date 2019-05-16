@@ -741,7 +741,7 @@ void IO_FUNC corerpc_reply_buffer(const sockid_t *sockid, const msgid_t *msgid, 
 }
 
 static void IO_FUNC __corerpc_reply(const sockid_t *sockid, const msgid_t *msgid,
-                           const void *_buf, int len)
+                                    const void *_buf, int len)
 {
         buffer_t buf;
 
@@ -753,7 +753,7 @@ static void IO_FUNC __corerpc_reply(const sockid_t *sockid, const msgid_t *msgid
 }
 
 void IO_FUNC corerpc_reply(const sockid_t *sockid, const msgid_t *msgid,
-                                 const void *_buf, int len)
+                           const void *_buf, int len)
 {
         if (likely(sockid->type == SOCKID_CORENET)) {
                 __corerpc_reply(sockid, msgid, _buf, len);
@@ -761,7 +761,6 @@ void IO_FUNC corerpc_reply(const sockid_t *sockid, const msgid_t *msgid,
                 rpc_reply(sockid, msgid, _buf, len);
         }
 }
-
 
 void __corerpc_reply_error(const sockid_t *sockid, const msgid_t *msgid, int _error)
 {

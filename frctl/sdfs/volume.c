@@ -566,7 +566,7 @@ static int __volume_chunk_iterator(volume_t *volume, const chkid_t *_chkid, func
         for (chkidx_t i = begin; i < end; i++) {
                 chkid.idx = i;
                 
-                ret = md_chunk_load(&chkid, chkinfo);
+                ret = md_chunk_load(&chkid, chkinfo, NULL);
                 if (ret) {
                         if (ret == ENOENT) {
                                 continue;

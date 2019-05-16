@@ -13,21 +13,18 @@
 #include "mds_rpc.h"
 #include "dbg.h"
 
-static int __chunk_create__(const volid_t *volid, const chkinfo_t *chkinfo)
+static int __chunk_create__(const chkinfo_t *chkinfo)
 {
         int ret;
         const chkid_t *chkid = &chkinfo->chkid;
         fileid_t fileid;
         char path[MAX_PATH_LEN], key[MAX_NAME_LEN];
 
-        (void) volid;
-        
         cid2fid(&fileid, chkid);
         fid2str(&fileid, key);
         snprintf(path, MAX_NAME_LEN, "%ju/%s/chkinfo", fileid.poolid, key);
         DINFO("create /%s/%s\n", ETCD_TREE, path);
-        ret = etcd_set_bin(ETCD_TREE, path, chkinfo, CHKINFO_SIZE(chkinfo->repnum),
-                           O_CREAT, -1);
+        ret = etcd_create(ETCD_TREE, path, chkinfo, CHKINFO_SIZE(chkinfo->repnum), -1);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
         }
@@ -37,13 +34,12 @@ err_ret:
         return ret;
 }
 
-static int __chunk_load__(const volid_t *volid, const chkid_t *chkid, chkinfo_t *chkinfo)
+static int __chunk_load__(const chkid_t *chkid,
+                          chkinfo_t *chkinfo, uint64_t *version)
 {
-        int ret, len;
+        int ret, len, idx;
         fileid_t fileid;
         char path[MAX_PATH_LEN], key[MAX_NAME_LEN];
-
-        (void) volid;
 
         len = CHKINFO_SIZE(YFS_CHK_REP_MAX);
         
@@ -51,32 +47,33 @@ static int __chunk_load__(const volid_t *volid, const chkid_t *chkid, chkinfo_t 
         fid2str(&fileid, key);
         snprintf(path, MAX_NAME_LEN, "%ju/%s/chkinfo", fileid.poolid, key);
         DINFO("load /%s/%s\n", ETCD_TREE, path);
-        ret = etcd_get_bin(ETCD_TREE, path, chkinfo, &len, NULL);
+        ret = etcd_get_bin(ETCD_TREE, path, chkinfo, &len, &idx);
         if (unlikely(ret)) {
                 ret = (ret == ENOKEY) ? ENOENT : ret;
                 GOTO(err_ret, ret);
         }
 
+        if (version)
+                *version = idx;
+        
         return 0;
 err_ret:
         return ret;
 }
 
-static int __chunk_update__(const volid_t *volid, const chkinfo_t *chkinfo)
+static int __chunk_update__(const chkinfo_t *chkinfo, int *idx)
 {
         int ret;
         const chkid_t *chkid = &chkinfo->chkid;
         fileid_t fileid;
         char path[MAX_PATH_LEN], key[MAX_NAME_LEN];
 
-        (void) volid;
-        
         cid2fid(&fileid, chkid);
         fid2str(&fileid, key);
         snprintf(path, MAX_NAME_LEN, "%ju/%s/chkinfo", fileid.poolid, key);
         DINFO("update /%s/%s\n", ETCD_TREE, path);
-        ret = etcd_set_bin(ETCD_TREE, path, chkinfo, CHKINFO_SIZE(chkinfo->repnum),
-                           0, -1);
+        ret = etcd_update(ETCD_TREE, path, chkinfo, CHKINFO_SIZE(chkinfo->repnum),
+                          idx, -1);
         if (unlikely(ret)) {
                 ret = (ret == ENOKEY) ? ENOENT : ret;
                 GOTO(err_ret, ret);
@@ -87,31 +84,51 @@ err_ret:
         return ret;
 }
 
-static int __chunk_create(const volid_t *volid, const chkinfo_t *chkinfo)
+static int __chunk_create(const chkinfo_t *chkinfo)
 {
         if (chkinfo->chkid.type == ftype_file) {
-                return __chunk_create__(volid, chkinfo);
+                return __chunk_create__(chkinfo);
         } else {
-                return mds_rpc_paset(&chkinfo->chkid, chkinfo, -1);
+                return mds_rpc_paset(&chkinfo->chkid, chkinfo, NULL);
         }
 }
 
-static int __chunk_load(const volid_t *volid, const chkid_t *chkid, chkinfo_t *chkinfo)
+static int __chunk_load(const chkid_t *chkid,
+                        chkinfo_t *chkinfo, uint64_t *version)
 {
         if (chkid->type == ftype_file) {
-                return __chunk_load__(volid, chkid, chkinfo);
+                return __chunk_load__(chkid, chkinfo, version);
         } else {
-                return mds_rpc_paget(chkid, chkinfo);
+                return mds_rpc_paget(chkid, chkinfo, version);
         }
 }
 
-static int __chunk_update(const volid_t *volid, const chkinfo_t *chkinfo)
+static int __chunk_update(const chkinfo_t *chkinfo, uint64_t *version)
 {
+        int ret;
+        
         if (chkinfo->chkid.type == ftype_file) {
-                return __chunk_update__(volid, chkinfo);
+                if (version) {
+                        int idx = *version;
+                        ret = __chunk_update__(chkinfo, &idx);
+                        if (unlikely(ret))
+                                GOTO(err_ret, ret);
+
+                        *version = idx;
+                } else {
+                        ret = __chunk_update__(chkinfo, NULL);
+                        if (unlikely(ret))
+                                GOTO(err_ret, ret);
+                }
         } else {
-                return mds_rpc_paset(&chkinfo->chkid, chkinfo, -1);
+                ret = mds_rpc_paset(&chkinfo->chkid, chkinfo, version);
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
         }
+
+        return 0;
+err_ret:
+        return ret;
 }
 
 chunkop_t __chunkop__ = {

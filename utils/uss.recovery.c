@@ -79,7 +79,7 @@ static int __chkstat_file(const fileid_t *fileid)
         char _chkinfo[CHKINFO_MAX];
 
         chkinfo = (void *)_chkinfo;
-        ret = md_chunk_load(fileid, chkinfo);
+        ret = md_chunk_load(fileid, chkinfo, NULL);
         if (ret)
                 GOTO(err_ret, ret);
 

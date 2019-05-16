@@ -32,6 +32,7 @@ typedef struct {
         uint16_t size;
         uint16_t magic;
         uint32_t crc;
+        uint64_t version;
         char buf[0];
 } record_t;
 
@@ -46,11 +47,13 @@ typedef struct {
 } pa_srv_t;
 
 typedef struct {
-        chkid_t id;
+        chkid_t tid;
         plock_t plock;
         ltoken_t token;
+        uint64_t info_array[PA_INFO_COUNT];
         plock_t record_lock[PA_LOCK];
         chunk_t *chunk;
+        uint64_t chunk_array[PA_ITEM_COUNT];
         chkinfo_t *array[PA_ITEM_COUNT];
 } pa_entry_t;
 
@@ -59,7 +62,7 @@ static int __pa_srv_cmp(const void *v1, const void *v2)
         const pa_entry_t *ent = v1;
         const chkid_t *chkid = v2;
 
-        return chkid_cmp(&ent->id, chkid);
+        return chkid_cmp(&ent->tid, chkid);
 }
 
 static uint32_t __pa_srv_key(const void *args)
@@ -124,66 +127,110 @@ err_ret:
         return ret;
 }
 
-static void __pa_cid2tid(const chkid_t *chkid, chkid_t *tid)
-{
-        *tid = *chkid;
-
-        tid->idx = chkid->idx / PA_ITEM_COUNT;
-
-        if (chkid->type == ftype_raw) 
-                tid->type = ftype_sub;
-        else if (chkid->type == ftype_sub)
-                tid->type = ftype_file;
-        else {
-                UNIMPLEMENTED(__DUMP__);
-        }
-}
-
 static void __pa_cid2off(const chkid_t *chkid, uint64_t *offset)
 {
         *offset = (chkid->idx % PA_ITEM_COUNT)
                 * PA_ITEM_SIZE + PA_INFO_AREA;
 }
 
-static int __pa_srv_set__(pa_entry_t *ent, const chkinfo_t *chkinfo,
-                          uint64_t prev_version)
+static int __pa_srv_write(pa_entry_t *ent, const char *_buf, int buflen,
+                          uint64_t offset, uint64_t version)
 {
         int ret;
         io_t io;
-        uint64_t offset;
         buffer_t buf;
+        record_t *record;
+        char tmp[MAX_BUF_LEN];
+
+        record = (void *)tmp;
+        record->magic = __MAGIC__;
+        record->size = buflen + sizeof(*record);
+        record->version = version;
+        memcpy(record->buf, _buf, buflen);
+        record->crc = crc32_sum(record->buf, buflen);
+
+        mbuffer_init(&buf, 0);
+        mbuffer_appendmem(&buf, record, record->size);
+        io_init(&io, &ent->tid, record->size, offset, 0);
+        io.buf = &buf;
+        ret = chunk_write(ent->chunk, &io);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        mbuffer_free(&buf);
+        
+        return 0;
+err_ret:
+        mbuffer_free(&buf);
+        return ret;
+}
+
+static int __pa_srv_read(pa_entry_t *ent, char *_buf, int *buflen,
+                         uint64_t offset, uint64_t *version)
+{
+        int ret;
+        io_t io;
+        buffer_t buf;
+        record_t *record;
+        char tmp[MAX_BUF_LEN];
+
+        YASSERT(sizeof(*record) + *buflen < MAX_BUF_LEN);
+
+        mbuffer_init(&buf, 0);
+        io_init(&io, &ent->tid, sizeof(*record) + *buflen, offset, 0);
+        io.buf = &buf;
+        ret = chunk_read(ent->chunk, &io);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        mbuffer_get(&buf, tmp, buf.len);
+        mbuffer_free(&buf);
+
+        record = (void *)tmp;
+        if (record->magic != __MAGIC__) {
+                ret = ENODATA;
+                GOTO(err_ret, ret);
+        }
+
+        *buflen = record->size - sizeof(*record);
+        *version = record->version;
+        YASSERT(record->crc == crc32_sum(record->buf, *buflen));
+        memcpy(_buf, record->buf, *buflen);
+        
+        return 0;
+err_ret:
+        return ret;
+}
+
+static int __pa_srv_set__(pa_entry_t *ent, const chkinfo_t *chkinfo,
+                          uint64_t *_version)
+{
+        int ret;
+        uint64_t offset, version;
         chkinfo_t *prev;
         record_t *record;
-        char _buf[MAX_BUF_LEN];
         const chkid_t *chkid = &chkinfo->chkid;
-        
+
+        version = *_version;
         prev = ent->array[chkid->idx % PA_ITEM_COUNT];
         if (prev == NULL) {
-                YASSERT(prev_version == (LLU)-1);
-        } else {
-                if (prev_version != (uint64_t)-1
-                    && prev->md_version != prev_version) {
-                        ret = ESTALE;
-                        GOTO(err_ret, ret);
-                }
+                YASSERT(version == 0);
+        }
+        
+        if (version && version != ent->chunk_array[chkid->idx % PA_ITEM_COUNT]) {
+                ret = ESTALE;
+                GOTO(err_ret, ret);
         }
 
         __pa_cid2off(chkid, &offset);
 
         static_assert((int)(CHKINFO_MAX + sizeof(*record)) <= PA_ITEM_SIZE, "pa_set");
-        record = (void *)_buf;
-        record->magic = __MAGIC__;
-        record->size = CHKINFO_SIZE(chkinfo->repnum) + sizeof(*record);
-        CHKINFO_CP(record->buf, chkinfo);
-        record->crc = crc32_sum(record->buf, CHKINFO_SIZE(chkinfo->repnum));
 
-        mbuffer_init(&buf, 0);
-        mbuffer_appendmem(&buf, record, record->size);
-        io_init(&io, &ent->id, record->size, offset, 0);
-        io.buf = &buf;
-        ret = chunk_write(ent->chunk, &io);
+        version++;
+        ret = __pa_srv_write(ent, (void *)chkinfo, CHKINFO_SIZE(chkinfo->repnum),
+                             offset, version);
         if (ret)
-                GOTO(err_free, ret);
+                GOTO(err_ret, ret);
 
         if (prev == NULL) {
                 ret = ymalloc((void **)&prev, CHKINFO_SIZE(chkinfo->repnum));
@@ -194,21 +241,18 @@ static int __pa_srv_set__(pa_entry_t *ent, const chkinfo_t *chkinfo,
         }
 
         CHKINFO_CP(prev, chkinfo);
-        
-        mbuffer_free(&buf);
+        *_version = version;
         
         return 0;
-err_free:
-        mbuffer_free(&buf);
 err_ret:
         return ret;
 }
 
 static int __pa_srv_set(pa_entry_t *ent, const chkinfo_t *chkinfo,
-                        uint64_t prev_version)
+                        uint64_t *version)
 {
         int ret;
-        const chkid_t *chkid = &ent->id;
+        const chkid_t *chkid = &ent->tid;
 
         ret = plock_wrlock(&ent->record_lock[chkid->idx % PA_LOCK]);
         if (unlikely(ret))
@@ -218,7 +262,7 @@ static int __pa_srv_set(pa_entry_t *ent, const chkinfo_t *chkinfo,
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
-        ret = __pa_srv_set__(ent, chkinfo, prev_version);
+        ret = __pa_srv_set__(ent, chkinfo, version);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
         
@@ -229,6 +273,22 @@ err_lock:
         plock_unlock(&ent->record_lock[chkid->idx % PA_LOCK]);
 err_ret:
         return ret;
+}
+
+static void __pa_srv_load_info(pa_entry_t *ent, const char *buf)
+{
+        record_t *record;
+
+        for (int i = 0; i < PA_INFO_COUNT; i++) {
+                record = (void *)buf + (PA_INFO_SIZE * i);
+                if (record->magic == 0) {
+                        ent->info_array[i] = 0;
+                } else {
+                        YASSERT(record->magic == __MAGIC__); 
+                        YASSERT(record->crc == crc32_sum(record->buf, record->size - sizeof(*record)));
+                        ent->info_array[i] = record->version;
+                }
+        }
 }
 
 static int __pa_srv_load_item__(buffer_t *_buf, pa_entry_t *ent)
@@ -244,17 +304,21 @@ static int __pa_srv_load_item__(buffer_t *_buf, pa_entry_t *ent)
 
         mbuffer_get(_buf, buf, SDFS_CHUNK_SPLIT);
 
+        __pa_srv_load_info(ent, buf);
+        
         for (int i = 0; i < PA_ITEM_COUNT; i++) {
                 record = (void *)buf + PA_INFO_AREA + (PA_ITEM_SIZE * i);
                 if (record->magic == 0) {
                         YASSERT(record->size == 0);
                         YASSERT(record->crc == 0);
                         ent->array[i] = NULL;
+                        ent->chunk_array[i] = 0;
                         continue;
                 }
 
                 YASSERT(record->magic == __MAGIC__);
                 YASSERT(record->crc == crc32_sum(record->buf, record->size - sizeof(*record)));
+                ent->chunk_array[i] = record->version;
 
                 ret = ymalloc((void **)&chkinfo, record->size);
                 if (unlikely(ret))
@@ -338,13 +402,13 @@ err_ret:
         return ret;
 }
 
-static int __pa_srv_entry_create(const chkid_t *chkid, pa_entry_t **_ent)
+static int __pa_srv_entry_create(const chkid_t *tid, pa_entry_t **_ent)
 {
         int ret;
         pa_entry_t *ent;
         ltoken_t token;
 
-        ret = ringlock_check(chkid, RINGLOCK_MDS, O_CREAT, &token);
+        ret = ringlock_check(tid, RINGLOCK_MDS, O_CREAT, &token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -353,7 +417,7 @@ static int __pa_srv_entry_create(const chkid_t *chkid, pa_entry_t **_ent)
                 GOTO(err_ret, ret);
 
         memset(ent, 0x0, sizeof(*ent));
-        ent->id = *chkid;
+        ent->tid = *tid;
         ent->token = token;
 
         ret = plock_init(&ent->plock, "pa_entry");
@@ -373,19 +437,19 @@ err_ret:
         return ret;
 }
 
-static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *chkid)
+static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
 {
         int ret;
         pa_entry_t *ent;
         char _chkinfo[CHKINFO_MAX];
         chkinfo_t *chkinfo = (void *)_chkinfo;
 
-        DINFO("load "CHKID_FORMAT"\n", CHKID_ARG(chkid));
+        DINFO("load "CHKID_FORMAT"\n", CHKID_ARG(tid));
         
-        ret = md_chunk_load(chkid, chkinfo);
+        ret = md_chunk_load(tid, chkinfo, NULL);
         if (unlikely(ret)) {
                 if (ret == ENOENT) {
-                        ret = __pa_srv_chunk_create(chkid, chkinfo);
+                        ret = __pa_srv_chunk_create(tid, chkinfo);
                         if (unlikely(ret))
                                 GOTO(err_ret, ret);
                 } else 
@@ -396,11 +460,11 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *chkid)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = __pa_srv_entry_create(chkid, &ent);
+        ret = __pa_srv_entry_create(tid, &ent);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
-        ret = htab_insert(pa_srv->htab, (void *)ent, &ent->id, 0);
+        ret = htab_insert(pa_srv->htab, (void *)ent, &ent->tid, 0);
         if (unlikely(ret))
                 GOTO(err_free, ret);
         
@@ -410,7 +474,7 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *chkid)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ent = htab_find(pa_srv->htab, (void *)chkid);
+        ent = htab_find(pa_srv->htab, (void *)tid);
         YASSERT(ent);
 
         ret = __pa_srv_load_item(ent, chkinfo);
@@ -428,11 +492,11 @@ err_ret:
         return ret;
 }
 
-static pa_srv_t *__pa_srv(const chkid_t *chkid)
+static pa_srv_t *__pa_srv(const chkid_t *tid)
 {
         pa_srv_t *pa_srv = variable_get(VARIABLE_PA_SRV);
 
-        return &pa_srv[(chkid->id * chkid->idx) / PA_HASH];
+        return &pa_srv[(tid->id * tid->idx) / PA_HASH];
 }
 
 static int __pa_srv_entry_get(pa_srv_t *pa_srv, const chkid_t *tid, pa_entry_t **_ent)
@@ -460,7 +524,7 @@ retry:
                 char _chkinfo[CHKINFO_MAX];
                 chkinfo_t *chkinfo = (void *)_chkinfo;
 
-                ret = md_chunk_load(tid, chkinfo);
+                ret = md_chunk_load(tid, chkinfo, NULL);
                 if (unlikely(ret)) {
                         GOTO(err_ret, ret);
                 }
@@ -482,17 +546,16 @@ static void __pa_srv_entry_release(pa_srv_t *pa_srv)
         plock_unlock(&pa_srv->plock);
 }
 
-int pa_srv_set(const chkinfo_t *chkinfo, uint64_t prev_version)
+int pa_srv_set(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
         pa_entry_t *ent;
-        const chkid_t *chkid = &chkinfo->chkid;
         chkid_t tid;
 
-        __pa_cid2tid(chkid, &tid);
+        cid2tid(chkid, &tid);
 
         DINFO("set "CHKID_FORMAT" @ "CHKID_FORMAT", prev version %llu\n", CHKID_ARG(chkid),
-              CHKID_ARG(&tid), prev_version);
+              CHKID_ARG(&tid), *version);
         
         pa_srv_t *pa_srv = __pa_srv(&tid);
         ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
@@ -503,11 +566,11 @@ int pa_srv_set(const chkinfo_t *chkinfo, uint64_t prev_version)
         if (unlikely(ret))
                 GOTO(err_release, ret);
         
-        ret = __pa_srv_set(ent, chkinfo, prev_version);
+        ret = __pa_srv_set(ent, chkinfo, version);
         if (unlikely(ret)) {
                 GOTO(err_lock, ret);
         }
-        
+
         plock_unlock(&ent->plock);
         __pa_srv_entry_release(pa_srv);
         
@@ -521,18 +584,21 @@ err_ret:
 }
 
 static int __pa_srv_get__(pa_entry_t *ent, const chkid_t *chkid,
-                          chkinfo_t *chkinfo)
+                          chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
         const chkinfo_t *tmp;
+        uint64_t idx = chkid->idx % PA_ITEM_COUNT;
 
-        tmp = ent->array[chkid->idx % PA_ITEM_COUNT];
+        tmp = ent->array[idx];
         if (tmp == NULL) {
                 ret = ENOENT;
                 GOTO(err_ret, ret);
         }
 
         CHKINFO_CP(chkinfo, tmp);
+        YASSERT(ent->chunk_array[idx] != (uint64_t)-1);
+        *version = ent->chunk_array[idx];
         
         return 0;
 err_ret:
@@ -541,7 +607,7 @@ err_ret:
 
 
 static int __pa_srv_get(pa_entry_t *ent, const chkid_t *chkid,
-                        chkinfo_t *chkinfo)
+                        chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
 
@@ -553,7 +619,7 @@ static int __pa_srv_get(pa_entry_t *ent, const chkid_t *chkid,
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
-        ret = __pa_srv_get__(ent, chkid, chkinfo);
+        ret = __pa_srv_get__(ent, chkid, chkinfo, version);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
         
@@ -566,13 +632,13 @@ err_ret:
         return ret;
 }
 
-int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo)
+int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
         pa_entry_t *ent;
         chkid_t tid;
 
-        __pa_cid2tid(chkid, &tid);
+        cid2tid(chkid, &tid);
 
         DINFO("get "CHKID_FORMAT" @ "CHKID_FORMAT"\n",
               CHKID_ARG(chkid), CHKID_ARG(&tid));
@@ -586,7 +652,7 @@ int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo)
         if (unlikely(ret))
                 GOTO(err_release, ret);
         
-        ret = __pa_srv_get(ent, chkid, chkinfo);
+        ret = __pa_srv_get(ent, chkid, chkinfo, version);
         if (unlikely(ret)) {
                 GOTO(err_lock, ret);
         }
@@ -611,9 +677,9 @@ static int __pa_srv_recovery(pa_entry_t *ent)
 {
         int ret;
 
-        DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(&ent->id));
+        DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(&ent->tid));
         
-        ret = ringlock_check(&ent->id, RINGLOCK_MDS, 0, &ent->token);
+        ret = ringlock_check(&ent->tid, RINGLOCK_MDS, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -626,7 +692,6 @@ static int __pa_srv_recovery(pa_entry_t *ent)
 err_ret:
         return ret;
 }
-
 
 int pa_srv_recovery(const chkid_t *chkid)
 {
@@ -656,6 +721,143 @@ int pa_srv_recovery(const chkid_t *chkid)
         plock_unlock(&ent->plock);
 
         DINFO("recovery "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
+        
+        __pa_srv_entry_release(pa_srv);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_release:
+        __pa_srv_entry_release(pa_srv);
+err_ret:
+        return ret;
+}
+
+static int __pa_srv_setinfo(pa_entry_t *ent, int idx, const char *buf,
+                            int buflen, uint64_t prev_version)
+{
+        int ret;
+        uint64_t newversion;
+
+        if (buflen + sizeof(record_t) > PA_INFO_SIZE) {
+                ret = EINVAL;
+                GOTO(err_ret, ret);
+        }
+
+        if ((ent->info_array[idx] != (uint64_t)-1 && prev_version != (uint64_t)-1)
+            && (prev_version != ent->info_array[idx])) {
+                ret = EPERM;
+                GOTO(err_ret, ret);
+        }
+        
+        ret = ringlock_check(&ent->tid, RINGLOCK_MDS, 0, &ent->token);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        newversion = ent->info_array[idx] + 1;
+        
+        ret = __pa_srv_write(ent, buf, buflen, idx * PA_INFO_SIZE, newversion);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        YASSERT(newversion == ent->info_array[idx] + 1);
+        ent->info_array[idx] = newversion;
+        
+        return 0;
+err_ret:
+        return ret;
+}
+
+int pa_srv_setinfo(const chkid_t *tid, int idx, const char *buf,
+                   int buflen, uint64_t prev_version)
+{
+        int ret;
+        pa_entry_t *ent;
+
+        DINFO("setinfo "CHKID_FORMAT" @ %u, prev_version %ju\n",
+              CHKID_ARG(tid), idx, prev_version);
+        
+        pa_srv_t *pa_srv = __pa_srv(tid);
+        ret = __pa_srv_entry_get(pa_srv, tid, &ent);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = plock_wrlock(&ent->plock);
+        if (unlikely(ret))
+                GOTO(err_release, ret);
+        
+        ret = __pa_srv_setinfo(ent, idx, buf, buflen, prev_version);
+        if (unlikely(ret)) {
+                GOTO(err_lock, ret);
+        }
+
+        plock_unlock(&ent->plock);
+
+        DINFO("setinfo "CHKID_FORMAT" @ %u, prev_version %ju success\n",
+              CHKID_ARG(tid), idx, prev_version);
+        
+        __pa_srv_entry_release(pa_srv);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_release:
+        __pa_srv_entry_release(pa_srv);
+err_ret:
+        return ret;
+}
+
+static int __pa_srv_getinfo(pa_entry_t *ent, int idx, char *buf,
+                            int *_buflen, uint64_t *version)
+{
+        int ret;
+
+        if (ent->info_array[idx] == 0) {
+                ret = ENODATA;
+                GOTO(err_ret, ret);
+        }
+
+        ret = ringlock_check(&ent->tid, RINGLOCK_MDS, 0, &ent->token);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = __pa_srv_read(ent, buf, _buflen, idx * PA_INFO_SIZE, version);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        YASSERT(*version == ent->info_array[idx]);
+        
+        return 0;
+err_ret:
+        return ret;
+}
+
+int pa_srv_getinfo(const chkid_t *tid, int idx, char *buf, int *buflen,
+                   uint64_t *version)
+{
+        int ret;
+        pa_entry_t *ent;
+
+        DINFO("getinfo "CHKID_FORMAT" @ %u\n", CHKID_ARG(tid), idx);
+        
+        pa_srv_t *pa_srv = __pa_srv(tid);
+        ret = __pa_srv_entry_get(pa_srv, tid, &ent);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = plock_rdlock(&ent->plock);
+        if (unlikely(ret))
+                GOTO(err_release, ret);
+        
+        ret = __pa_srv_getinfo(ent, idx, buf, buflen, version);
+        if (unlikely(ret)) {
+                GOTO(err_lock, ret);
+        }
+
+        plock_unlock(&ent->plock);
+
+        DINFO("getinfo "CHKID_FORMAT" @ %u, version %ju success\n",
+              CHKID_ARG(tid), idx, *version);
         
         __pa_srv_entry_release(pa_srv);
         

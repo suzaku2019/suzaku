@@ -61,10 +61,10 @@ int md_remove_shareinfo(share_protocol_t prot,
                          const void *req_buf, const int req_buflen);
 
 /* chunk.c */
-int md_chunk_update(const chkinfo_t *chkinfo);//need lock
+int md_chunk_update(const chkinfo_t *chkinfo, uint64_t *version);
 int md_chunk_newdisk(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin, int flag);//need lock
 int md_chunk_create(const fileinfo_t *md, const chkid_t *chkid, chkinfo_t *chkinfo);
-int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo);
+int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *version);
 int md_chunk_load_check(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin);
 
 int md_chkload(chkinfo_t *chk, const chkid_t *chkid, const nid_t *nid);

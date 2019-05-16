@@ -58,9 +58,11 @@ typedef struct {
 } inodeop_t;
 
 typedef struct {
-        int (*update)(const volid_t *volid, const chkinfo_t *chkinfo);
-        int (*load)(const volid_t *volid, const chkid_t *chkid, chkinfo_t *chkinfo);
-        int (*create)(const volid_t *volid, const chkinfo_t *chkinfo);
+        int (*update)(const chkinfo_t *chkinfo,
+                      uint64_t *version);
+        int (*load)(const chkid_t *chkid,
+                    chkinfo_t *chkinfo, uint64_t *version);
+        int (*create)(const chkinfo_t *chkinfo);
 } chunkop_t;
 
 typedef struct {

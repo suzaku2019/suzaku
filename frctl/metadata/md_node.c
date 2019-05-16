@@ -227,7 +227,7 @@ int md_remove(const volid_t *volid, const fileid_t *fileid)
         chkinfo = (void *)_chkinfo;
         for (i = 0; i < (int)md->chknum; i++) {
                 fid2cid(&chkid, &md->fileid, i);
-                ret = md_chunk_load(&chkid, chkinfo);
+                ret = md_chunk_load(&chkid, chkinfo, NULL);
                 if (ret)
                         continue;
 

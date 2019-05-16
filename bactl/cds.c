@@ -118,7 +118,7 @@ inline static int __chunk_unlink(const chkid_t *chkid, uint64_t snapvers)
         chkinfo_t *chkinfo;
 
         chkinfo = (void *)buf;
-        ret = md_chunk_load(chkid, chkinfo);
+        ret = md_chunk_load(chkid, chkinfo, NULL);
         if (ret) {
                 if (ret == ENOENT) {
                         /*no op*/

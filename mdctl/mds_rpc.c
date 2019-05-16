@@ -440,6 +440,7 @@ static int __mds_srv_paset(const sockid_t *sockid, const msgid_t *msgid, buffer_
         const chkinfo_t *chkinfo;
         const uint64_t *prev_version;
         const nid_t *nid;
+        uint64_t version;
 
         req = (void *)buf;
         mbuffer_get(_buf, req, sizeof(*req));
@@ -454,11 +455,12 @@ static int __mds_srv_paset(const sockid_t *sockid, const msgid_t *msgid, buffer_
                        &prev_version, NULL,
                        NULL);
 
-        ret = pa_srv_set(chkinfo, *prev_version);
+        version = *prev_version;
+        ret = pa_srv_set(&req->chkid, chkinfo, &version);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        corerpc_reply(sockid, msgid, NULL, 0);
+        corerpc_reply(sockid, msgid, &version, sizeof(version));
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -468,7 +470,7 @@ err_ret:
         return ret;
 }
 
-int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t prev_version)
+int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
@@ -476,6 +478,7 @@ int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t prev_
         msg_t *req;
         coreid_t coreid;
         nid_t nid = *net_getnid();
+        uint64_t prev_version = version ? *version : 0;
 
         ret = part_location(chkid, PART_MDS, &coreid);
         if (unlikely(ret))
@@ -497,13 +500,22 @@ int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t prev_
 
         req->buflen = count;
 
+        buffer_t rbuf;
+        mbuffer_init(&rbuf, 0);
         ret = corerpc_postwait("mds_rpc_paset", &coreid,
                                req, sizeof(*req) + count,
-                               NULL, NULL,
+                               NULL, &rbuf,
                                MSG_MDS, 0, _get_timeout());
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        YASSERT(rbuf.len == sizeof(*version));
+        if (version) {
+                mbuffer_popmsg(&rbuf, version, sizeof(*version));
+        } else {
+                mbuffer_free(&rbuf);
+        }
+        
         ANALYSIS_QUEUE(0, IO_WARN, NULL);
 
         mem_cache_free(MEM_CACHE_4K, buf);
@@ -522,8 +534,9 @@ static int __mds_srv_paget(const sockid_t *sockid, const msgid_t *msgid, buffer_
         uint32_t buflen;
         const coreid_t *coreid;
         chkinfo_t *chkinfo;
-        char _chkinfo[CHKINFO_MAX];
         const nid_t *nid;
+        uint64_t *version;
+        char tmp[CHKINFO_MAX + sizeof(uint64_t)];
 
         req = (void *)buf;
         mbuffer_get(_buf, req, sizeof(*req));
@@ -538,13 +551,14 @@ static int __mds_srv_paget(const sockid_t *sockid, const msgid_t *msgid, buffer_
                        NULL);
 
         DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(&req->chkid));
-        
-        chkinfo = (void *)_chkinfo;
-        ret = pa_srv_get(&req->chkid, chkinfo);
+
+        version = (void *)tmp;
+        chkinfo = (void *)tmp + sizeof(uint64_t);
+        ret = pa_srv_get(&req->chkid, chkinfo, version);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        corerpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
+        corerpc_reply(sockid, msgid, tmp, CHKINFO_SIZE(chkinfo->repnum) + sizeof(uint64_t));
 
         DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(&req->chkid));
 
@@ -556,7 +570,7 @@ err_ret:
         return ret;
 }
 
-int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo)
+int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *_version)
 {
         int ret;
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
@@ -564,6 +578,7 @@ int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo)
         msg_t *req;
         coreid_t coreid;
         nid_t nid = *net_getnid();
+        uint64_t version;
 
         DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(chkid));
         
@@ -598,9 +613,14 @@ int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        mbuffer_popmsg(&rbuf, &version, sizeof(uint64_t));
         mbuffer_popmsg(&rbuf, chkinfo, rbuf.len);
 
-        DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
+        if (_version) {
+                *_version = version;
+        }
+        
+        DINFO("pa get "CHKID_FORMAT" success, version %ju\n", CHKID_ARG(chkid), version);
         
         ANALYSIS_QUEUE(0, IO_WARN, NULL);
 

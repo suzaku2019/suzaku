@@ -283,7 +283,7 @@ STATIC int __range_ctl_chunk_load(const chkid_t *chkid, const ec_t *ec,
         char _chkinfo[CHKINFO_MAX];
 
         chkinfo = (void *)_chkinfo;
-        ret = md_chunk_load(chkid, chkinfo);
+        ret = md_chunk_load(chkid, chkinfo, NULL);
         if (unlikely(ret)) {
                 if (ret == ENOENT) {
                         if (flags & O_CREAT) {

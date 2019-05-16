@@ -212,7 +212,7 @@ int chunk_replica_recovery(chunk_t *chunk)
                 DBUG("status %u\n", reploc->status);
         }
 
-        ret = md_chunk_update(chkinfo);
+        ret = md_chunk_update(chkinfo, NULL);
         if (ret)
                 GOTO(err_ret, ret);
         

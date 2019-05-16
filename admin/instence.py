@@ -37,7 +37,6 @@ class Instence(object):
             self.cmd = self.config.uss_yfrctl
             self.home = os.path.join(self.config.home, "data/frctl")
 
-        print (self.role, self.home)
         #print [self.home, self.cmd, self.role]
         self.name = self.home
         self.disk_status = 0;

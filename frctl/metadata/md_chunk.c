@@ -33,7 +33,7 @@ int md_chkload(chkinfo_t *chk, const chkid_t *chkid, const nid_t *_peer)
 {
         (void) _peer;
 
-        return md_chunk_load(chkid, chk);
+        return md_chunk_load(chkid, chk, NULL);
 }
 
 static int __md_location_check(const diskid_t *id, const diskid_t *id1, int *same)
@@ -331,7 +331,7 @@ int md_chunk_create(const fileinfo_t *md, const chkid_t *chkid, chkinfo_t *chkin
                 }
         }
         
-        ret = chunkop->create(NULL, chkinfo);
+        ret = chunkop->create(chkinfo);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -342,12 +342,12 @@ err_ret:
         return ret;
 }
 
-int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo)
+int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
 
         DINFO("load "CHKID_FORMAT"\n", CHKID_ARG(chkid));
-        ret = chunkop->load(NULL, chkid, chkinfo);
+        ret = chunkop->load(chkid, chkinfo, version);
         if (ret)
                 GOTO(err_ret, ret);
 
@@ -360,7 +360,7 @@ int md_chunk_newdisk(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin, int f
 {
         int ret;
 
-        ret = md_chunk_load(chkid, chkinfo);
+        ret = md_chunk_load(chkid, chkinfo, NULL);
         if (ret)
                 GOTO(err_ret, ret);
         
@@ -377,7 +377,7 @@ err_ret:
         return ret;
 }
 
-int md_chunk_update(const chkinfo_t *chkinfo)
+int md_chunk_update(const chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
 
@@ -387,7 +387,7 @@ int md_chunk_update(const chkinfo_t *chkinfo)
         }
 #endif
 
-        ret = chunkop->update(NULL, chkinfo);
+        ret = chunkop->update(chkinfo, version);
         if (ret)
                 GOTO(err_ret, ret);
 
