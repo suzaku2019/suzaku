@@ -123,7 +123,7 @@ static void __request_handler(void *arg)
         return ;
 err_ret:
         mbuffer_free(&buf);
-        corerpc_reply_error_union(&sockid, &msgid, ret);
+        corerpc_reply_error(&sockid, &msgid, ret);
 
         DBUG("error op %u from %s, id (%u, %x)\n", req.op,
              _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
@@ -458,7 +458,7 @@ static int __mds_srv_paset(const sockid_t *sockid, const msgid_t *msgid, buffer_
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        corerpc_reply_union(sockid, msgid, NULL, 0);
+        corerpc_reply(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -497,7 +497,7 @@ int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t prev_
 
         req->buflen = count;
 
-        ret = corerpc_postwait_union("mds_rpc_paset", &coreid,
+        ret = corerpc_postwait("mds_rpc_paset", &coreid,
                                req, sizeof(*req) + count,
                                NULL, NULL,
                                MSG_MDS, 0, _get_timeout());
@@ -544,7 +544,7 @@ static int __mds_srv_paget(const sockid_t *sockid, const msgid_t *msgid, buffer_
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        corerpc_reply_union(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
+        corerpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
 
         DINFO("pa get "CHKID_FORMAT" success\n", CHKID_ARG(&req->chkid));
 
@@ -591,7 +591,7 @@ int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo)
 
         buffer_t rbuf;
         mbuffer_init(&rbuf, 0);
-        ret = corerpc_postwait_union("mds_rpc_paget", &coreid,
+        ret = corerpc_postwait("mds_rpc_paget", &coreid,
                                req, sizeof(*req) + count,
                                NULL, &rbuf,
                                MSG_MDS, 0, _get_timeout());
@@ -637,7 +637,7 @@ static int __mds_srv_recovery(const sockid_t *sockid, const msgid_t *msgid, buff
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        corerpc_reply_union(sockid, msgid, NULL, 0);
+        corerpc_reply(sockid, msgid, NULL, 0);
 
         DINFO("recovery "CHKID_FORMAT" success\n", CHKID_ARG(&req->chkid));
 
@@ -682,7 +682,7 @@ int mds_rpc_recovery(const chkid_t *chkid)
 
         req->buflen = count;
 
-        ret = corerpc_postwait_union("mds_rpc_recovery", &coreid,
+        ret = corerpc_postwait("mds_rpc_recovery", &coreid,
                                req, sizeof(*req) + count,
                                NULL, NULL,
                                MSG_MDS, 0, _get_timeout());

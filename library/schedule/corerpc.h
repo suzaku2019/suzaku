@@ -49,9 +49,6 @@ void corerpc_register(int type, net_request_handler handler, void *context);
 int corerpc_postwait(const char *name, const coreid_t *coreid, const void *request,
                      int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
                      int msg_type, int msg_size, int timeout);
-int corerpc_postwait_union(const char *name, const coreid_t *coreid, const void *request,
-                           int reqlen, const buffer_t *wbuf, buffer_t *rbuf,
-                           int msg_type, int msg_size, int timeout);
 
 // sockid-based
 int corerpc_send_and_wait(void *ctx, const char *name, const sockid_t *sockid,
@@ -60,11 +57,8 @@ int corerpc_send_and_wait(void *ctx, const char *name, const sockid_t *sockid,
                           int msg_type, int msg_size, int timeout);
 
 void corerpc_reply(const sockid_t *sockid, const msgid_t *msgid, const void *_buf, int len);
-void corerpc_reply1(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf);
-void corerpc_reply_union1(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf);
+void corerpc_reply_buffer(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf);
 void corerpc_reply_error(const sockid_t *sockid, const msgid_t *msgid, int _error);
-void corerpc_reply_error_union(const sockid_t *sockid, const msgid_t *msgid, int _error);
-void corerpc_reply_union(const sockid_t *sockid, const msgid_t *msgid, const void *_buf, int len);
 
 int corerpc_recv(void *ctx, void *buf, int *count);
 

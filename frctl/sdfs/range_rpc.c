@@ -123,40 +123,12 @@ static void __request_handler(void *arg)
         return ;
 err_ret:
         mbuffer_free(&buf);
-        corerpc_reply_error_union(&sockid, &msgid, ret);
+        corerpc_reply_error(&sockid, &msgid, ret);
 
         DBUG("error op %u from %s, id (%u, %x)\n", req.op,
              _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
         return;
 }
-
-#if 0
-static int __range_ctl_get_token__(va_list ap)
-{
-        const chkid_t *chkid = va_arg(ap, const chkid_t *);
-        int op = va_arg(ap, int);
-        io_token_t *token = va_arg(ap, io_token_t *);
-
-        va_end(ap);
-        
-        return range_ctl_get_token(chkid, op, token);
-}
-
-static int __range_ctl_get_token(const coreid_t *coreid, const chkid_t *chkid, int op,
-                                 io_token_t *token)
-{
-        int ret;
-
-        ret = core_request(coreid->idx, -1, __FUNCTION__,
-                           __range_ctl_get_token__, chkid, op, token);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        return 0;
-err_ret:
-        return ret;
-}
-#endif
 
 static int __range_srv_get_token(const sockid_t *sockid, const msgid_t *msgid,
                                  buffer_t *_buf)
@@ -185,7 +157,7 @@ static int __range_srv_get_token(const sockid_t *sockid, const msgid_t *msgid,
         }
 
         DBUG("corenet write\n");
-        corerpc_reply_union(sockid, msgid, token, IO_TOKEN_SIZE(token->repnum));
+        corerpc_reply(sockid, msgid, token, IO_TOKEN_SIZE(token->repnum));
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -225,7 +197,7 @@ int range_rpc_get_token(const coreid_t *coreid, const chkid_t *chkid, uint32_t o
         buffer_t _buf;
         mbuffer_init(&_buf, 0);
 
-        ret = corerpc_postwait_union("range_rpc_get_token", coreid,
+        ret = corerpc_postwait("range_rpc_get_token", coreid,
                                req, sizeof(*req) + count, NULL,
                                &_buf, MSG_RANGE, 0, _get_timeout());
         if (unlikely(ret)) {
@@ -245,33 +217,6 @@ err_ret:
         mem_cache_free(MEM_CACHE_4K, buf);
         return ret;
 }
-
-#if 0
-static int __range_ctl_chunk_recovery__(va_list ap)
-{
-        const chkid_t *chkid = va_arg(ap, const chkid_t *);
-
-        va_end(ap);
-        
-        return range_ctl_chunk_recovery(chkid);
-}
-
-
-static int __range_ctl_chunk_recovery(const coreid_t *coreid, const chkid_t *chkid)
-{
-        int ret;
-
-        ret = core_request(coreid->idx, -1, __FUNCTION__,
-                           __range_ctl_chunk_recovery__, chkid);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-#endif
 
 static int __range_srv_recovery(const sockid_t *sockid, const msgid_t *msgid,
                                  buffer_t *_buf)
@@ -294,7 +239,7 @@ static int __range_srv_recovery(const sockid_t *sockid, const msgid_t *msgid,
                 GOTO(err_ret, ret);
         }
 
-        corerpc_reply_union(sockid, msgid, NULL, 0);
+        corerpc_reply(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -331,7 +276,7 @@ int range_rpc_chunk_recovery(const coreid_t *coreid, const chkid_t *chkid)
 
         DBUG("connect %u\n", sizeof(*req) + count);
 
-        ret = corerpc_postwait_union("range_rpc_chunk_recovery", coreid,
+        ret = corerpc_postwait("range_rpc_chunk_recovery", coreid,
                                req, sizeof(*req) + count, NULL,
                                NULL, MSG_RANGE, 0, _get_timeout());
         if (unlikely(ret)) {
@@ -401,7 +346,7 @@ static int __range_srv_chunk_getinfo(const sockid_t *sockid, const msgid_t *msgi
         }
 
         DBUG("corenet write\n");
-        corerpc_reply_union(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
+        corerpc_reply(sockid, msgid, chkinfo, CHKINFO_SIZE(chkinfo->repnum));
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -439,7 +384,7 @@ int range_rpc_chunk_getinfo(const coreid_t *coreid, const chkid_t *chkid, chkinf
         buffer_t _buf;
         mbuffer_init(&_buf, 0);
 
-        ret = corerpc_postwait_union("range_rpc_chunk_getinfo", coreid,
+        ret = corerpc_postwait("range_rpc_chunk_getinfo", coreid,
                                req, sizeof(*req) + count, NULL,
                                &_buf, MSG_RANGE, 0, _get_timeout());
         if (unlikely(ret)) {

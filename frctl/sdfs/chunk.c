@@ -141,7 +141,7 @@ static int IO_FUNC __chunk_consistent(const chkid_t *chkid, const reploc_t *repl
                 offline = 1;
                 ltime = 0;
         } else {
-                if (_ltime != ltime) {//node online
+                if (_ltime != ltime) {
                         reset = 1;
                 }
         }

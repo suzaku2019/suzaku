@@ -128,7 +128,7 @@ static void __request_handler(void *arg)
         return ;
 err_ret:
         mbuffer_free(&buf);
-        corerpc_reply_error_union(&sockid, &msgid, ret);
+        corerpc_reply_error(&sockid, &msgid, ret);
         DBUG("error op %u from %s, id (%u, %x)\n", req.op,
              _inet_ntoa(sockid.addr), msgid.idx, msgid.figerprint);
         return;
@@ -161,7 +161,7 @@ static int __cds_srv_read(const sockid_t *sockid, const msgid_t *msgid, buffer_t
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        corerpc_reply_union1(sockid, msgid, &reply);
+        corerpc_reply_buffer(sockid, msgid, &reply);
 
         mbuffer_free(&reply);
 
@@ -208,7 +208,7 @@ int cds_rpc_read(const diskid_t *diskid, const io_t *io, buffer_t *_buf)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = corerpc_postwait_union("cds_rpc_read", &coreid,
+        ret = corerpc_postwait("cds_rpc_read", &coreid,
                                 req, sizeof(*req) + count, NULL,
                                 _buf, MSG_REPLICA, io->size, _get_timeout());
         if (unlikely(ret)) {
@@ -261,7 +261,7 @@ static int __cds_srv_write(const sockid_t *sockid, const msgid_t *msgid, buffer_
                 GOTO(err_ret, ret);
         }
 
-        corerpc_reply_union(sockid, msgid, NULL, 0);
+        corerpc_reply(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -311,7 +311,7 @@ int cds_rpc_write(const diskid_t *diskid, const io_t *io,
                 GOTO(err_ret, ret);
 
         DBUG("corenet write\n");
-        ret = corerpc_postwait_union("cds_rpc_write", &coreid,
+        ret = corerpc_postwait("cds_rpc_write", &coreid,
                                req, sizeof(*req) + count, _buf,
                                NULL, MSG_REPLICA, io->size, _get_timeout());
         if (unlikely(ret)) {
@@ -631,7 +631,7 @@ static int __cds_srv_sync(const sockid_t *sockid, const msgid_t *msgid, buffer_t
                 GOTO(err_ret, ret);
         }
 
-        corerpc_reply_union(sockid, msgid, NULL, 0);
+        corerpc_reply(sockid, msgid, NULL, 0);
 
         mem_cache_free(MEM_CACHE_4K, buf);
 
@@ -680,7 +680,7 @@ int cds_rpc_sync(const diskid_t *diskid, const io_t *io, const buffer_t *_buf)
                 GOTO(err_ret, ret);
 
         DBUG("corenet sync\n");
-        ret = corerpc_postwait_union("cds_rpc_sync", &coreid,
+        ret = corerpc_postwait("cds_rpc_sync", &coreid,
                                req, sizeof(*req) + count, _buf,
                                NULL, MSG_REPLICA, io->size, _get_timeout());
         if (unlikely(ret)) {
