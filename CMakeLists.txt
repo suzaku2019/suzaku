@@ -174,7 +174,7 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/chunk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/chunk_replica.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/chunk_recovery.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/allocator.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/diskmap.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/io_analysis.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_inode.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_dir.c

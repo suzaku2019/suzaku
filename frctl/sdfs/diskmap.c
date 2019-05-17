@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/types.h>
-//#include <attr/attributes.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -17,7 +16,7 @@
 
 #include "etcd.h"
 #include "network.h"
-#include "allocator.h"
+#include "diskmap.h"
 #include "mds_rpc.h"
 #include "sysutil.h"
 #include "net_table.h"
@@ -36,7 +35,7 @@ typedef struct {
         int count;
         int cursor;
         diskid_t array[0];
-} allocator_node_t;
+} diskmap_node_t;
 
 typedef struct {
         struct list_head hook;
@@ -45,17 +44,17 @@ typedef struct {
         sy_rwlock_t lock;
         int count;
         int cursor;
-        allocator_node_t **array;
-} allocator_t;
+        diskmap_node_t **array;
+} diskmap_t;
 
 typedef struct {
         sy_rwlock_t rwlock;
         struct list_head list;
-} allocator_list_t;
+} diskmap_list_t;
 
-static allocator_list_t *__allocator_list__ = NULL; 
+static diskmap_list_t *__diskmap_list__ = NULL; 
 
-STATIC int __allocator_disk(const diskid_t *diskid)
+STATIC int __diskmap_disk(const diskid_t *diskid)
 {
         int ret;
         nid_t nid;
@@ -75,11 +74,11 @@ err_ret:
         return ret;
 }
 
-STATIC int __allocator_node(const char *nodeinfo, allocator_node_t **_allocator_node)
+STATIC int __diskmap_node(const char *nodeinfo, diskmap_node_t **_diskmap_node)
 {
         int ret, disk_count = 512;
         char *list[512];
-        allocator_node_t *allocator_node;
+        diskmap_node_t *diskmap_node;
         diskid_t diskid;
 
         const char *pos = strchr(nodeinfo, ' ');
@@ -97,42 +96,42 @@ STATIC int __allocator_node(const char *nodeinfo, allocator_node_t **_allocator_
 
         YASSERT(disk_count);
 
-        ret = ymalloc((void **)&allocator_node, sizeof(*allocator_node)
+        ret = ymalloc((void **)&diskmap_node, sizeof(*diskmap_node)
                       + sizeof(diskid_t) * disk_count);
         if (ret)
                 GOTO(err_ret, ret);
 
-        allocator_node->count = 0;
-        allocator_node->cursor = _random();
+        diskmap_node->count = 0;
+        diskmap_node->cursor = _random();
         for (int i = 0; i < disk_count; i++) {
                 str2nid(&diskid, list[i]);
 
-                ret = __allocator_disk(&diskid);
+                ret = __diskmap_disk(&diskid);
                 if (ret)
                         continue;
                 
-                allocator_node->array[allocator_node->count] = diskid;
-                allocator_node->count++;
+                diskmap_node->array[diskmap_node->count] = diskid;
+                diskmap_node->count++;
         }
 
-        if (allocator_node->count == 0) {
-                yfree((void **)&allocator_node);
+        if (diskmap_node->count == 0) {
+                yfree((void **)&diskmap_node);
                 ret = ENOSPC;
                 GOTO(err_ret, ret);
         }
 
-        *_allocator_node = allocator_node;
+        *_diskmap_node = diskmap_node;
         
         return 0;
 err_ret:
         return ret;
 }
 
-STATIC int __allocator_scan(char *value, int *_count, allocator_node_t ***_array)
+STATIC int __diskmap_scan(char *value, int *_count, diskmap_node_t ***_array)
 {
         int ret, node_count, count;
         char *list[1024];
-        allocator_node_t **node_array, *allocator_node;
+        diskmap_node_t **node_array, *diskmap_node;
 
         node_count = 1024;
         _str_split(value, '\n', list, &node_count);
@@ -142,17 +141,17 @@ STATIC int __allocator_scan(char *value, int *_count, allocator_node_t ***_array
                 GOTO(err_ret, ret);
         }
 
-        ret = ymalloc((void **)&node_array, sizeof(allocator_node_t *) * node_count);
+        ret = ymalloc((void **)&node_array, sizeof(diskmap_node_t *) * node_count);
         if (ret)
                 GOTO(err_ret, ret);
 
         count = 0;
         for (int i = 0; i < node_count; i++) {
-                ret = __allocator_node(list[i], &allocator_node);
+                ret = __diskmap_node(list[i], &diskmap_node);
                 if (ret)
                         continue;
 
-                node_array[count] = allocator_node;
+                node_array[count] = diskmap_node;
                 count++;
         }
 
@@ -170,22 +169,22 @@ err_ret:
         return ret;
 }
 
-STATIC int __allocator_replace(allocator_t *allocator, int count,
-                               allocator_node_t **array)
+STATIC int __diskmap_replace(diskmap_t *diskmap, int count,
+                               diskmap_node_t **array)
 {
         int ret, old;
-        allocator_node_t **old_array;
+        diskmap_node_t **old_array;
         
-        ret = sy_rwlock_wrlock(&allocator->lock);
+        ret = sy_rwlock_wrlock(&diskmap->lock);
         if (ret)
                 GOTO(err_ret, ret);
 
-        old = allocator->count;
-        old_array = allocator->array;
-        allocator->count = count;
-        allocator->array = array;
+        old = diskmap->count;
+        old_array = diskmap->array;
+        diskmap->count = count;
+        diskmap->array = array;
                 
-        sy_rwlock_unlock(&allocator->lock);
+        sy_rwlock_unlock(&diskmap->lock);
 
         for (int i = 0; i < old; i++) {
                 yfree((void **)&old_array[i]);
@@ -196,35 +195,35 @@ err_ret:
         return ret;
 }
 
-STATIC allocator_t *__allocator_find(allocator_list_t *allocator_list, uint64_t poolid)
+STATIC diskmap_t *__diskmap_find(diskmap_list_t *diskmap_list, uint64_t poolid)
 {
         struct list_head *pos;
-        allocator_t *allocator;
+        diskmap_t *diskmap;
 
-        list_for_each(pos, &allocator_list->list) {
-                allocator = (void *)pos;
-                if (allocator->poolid == poolid) {
-                        return allocator;
+        list_for_each(pos, &diskmap_list->list) {
+                diskmap = (void *)pos;
+                if (diskmap->poolid == poolid) {
+                        return diskmap;
                 }
         }
         
         return NULL;
 }
 
-STATIC int __allocator_update(uint64_t poolid, int count,
-                              allocator_node_t **node_array)
+STATIC int __diskmap_update(uint64_t poolid, int count,
+                              diskmap_node_t **node_array)
 {
         int ret;
-        allocator_list_t *allocator_list = __allocator_list__;
-        allocator_t *allocator;
+        diskmap_list_t *diskmap_list = __diskmap_list__;
+        diskmap_t *diskmap;
 
-        ret = sy_rwlock_rdlock(&allocator_list->rwlock);
+        ret = sy_rwlock_rdlock(&diskmap_list->rwlock);
         if (ret)
                 GOTO(err_ret, ret);
 
-        allocator = __allocator_find(allocator_list, poolid);
-        if (allocator) {
-                ret = __allocator_replace(allocator, count, node_array);
+        diskmap = __diskmap_find(diskmap_list, poolid);
+        if (diskmap) {
+                ret = __diskmap_replace(diskmap, count, node_array);
                 if (ret)
                         GOTO(err_lock, ret);
         } else {
@@ -232,89 +231,89 @@ STATIC int __allocator_update(uint64_t poolid, int count,
                 goto err_lock;
         }
         
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
         
         return 0;
 err_lock:
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
 err_ret:
         return ret;
 }
 
-STATIC int __allocator_insert(uint64_t poolid, int count,
-                              allocator_node_t **node_array)
+STATIC int __diskmap_insert(uint64_t poolid, int count,
+                              diskmap_node_t **node_array)
 {
         int ret;
-        allocator_list_t *allocator_list = __allocator_list__;
-        allocator_t *allocator;
+        diskmap_list_t *diskmap_list = __diskmap_list__;
+        diskmap_t *diskmap;
 
-        ret = sy_rwlock_wrlock(&allocator_list->rwlock);
+        ret = sy_rwlock_wrlock(&diskmap_list->rwlock);
         if (ret)
                 GOTO(err_ret, ret);
 
-        allocator = __allocator_find(allocator_list, poolid);
-        if (allocator) {
-                ret = __allocator_replace(allocator, count, node_array);
+        diskmap = __diskmap_find(diskmap_list, poolid);
+        if (diskmap) {
+                ret = __diskmap_replace(diskmap, count, node_array);
                 if (ret)
                         GOTO(err_lock, ret);
         } else {
-                ret = ymalloc((void **)&allocator, sizeof(*allocator));
+                ret = ymalloc((void **)&diskmap, sizeof(*diskmap));
                 if (ret)
                         GOTO(err_lock, ret);
 
-                memset(allocator, 0x0, sizeof(*allocator));
-                ret = sy_rwlock_init(&allocator->lock, "allocator");
+                memset(diskmap, 0x0, sizeof(*diskmap));
+                ret = sy_rwlock_init(&diskmap->lock, "diskmap");
                 if (ret)
                         GOTO(err_lock, ret);
 
-                allocator->poolid = poolid;
-                allocator->etcd_idx = -1;
-                list_add_tail(&allocator->hook, &allocator_list->list);
+                diskmap->poolid = poolid;
+                diskmap->etcd_idx = -1;
+                list_add_tail(&diskmap->hook, &diskmap_list->list);
 
-                ret = __allocator_replace(allocator, count, node_array);
+                ret = __diskmap_replace(diskmap, count, node_array);
                 if (ret)
                         GOTO(err_lock, ret);
         }
         
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
         
         return 0;
 err_lock:
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
 err_ret:
         return ret;
 }
 
-STATIC int __allocator_needupdate(uint64_t poolid, int idx)
+STATIC int __diskmap_needupdate(uint64_t poolid, int idx)
 {
         int ret, _idx;
-        allocator_list_t *allocator_list = __allocator_list__;
-        allocator_t *allocator;
+        diskmap_list_t *diskmap_list = __diskmap_list__;
+        diskmap_t *diskmap;
 
         YASSERT(idx != -1);
         
-        ret = sy_rwlock_rdlock(&allocator_list->rwlock);
+        ret = sy_rwlock_rdlock(&diskmap_list->rwlock);
         if (ret)
                 UNIMPLEMENTED(__DUMP__);
 
-        allocator = __allocator_find(allocator_list, poolid);
-        if (allocator == NULL) {
+        diskmap = __diskmap_find(diskmap_list, poolid);
+        if (diskmap == NULL) {
                 _idx = -1;
         } else {
-                _idx = allocator->etcd_idx;
+                _idx = diskmap->etcd_idx;
         }
         
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
 
         return _idx != idx;
 }
 
 
-STATIC int __allocator_pool(uint64_t poolid, char *value)
+STATIC int __diskmap_pool(uint64_t poolid, char *value)
 {
         int ret, idx, count;
         char key[MAX_PATH_LEN];
-        allocator_node_t **node_array;
+        diskmap_node_t **node_array;
 
         snprintf(key, MAX_NAME_LEN, "id/%ju/diskmap", poolid);
 
@@ -322,21 +321,21 @@ STATIC int __allocator_pool(uint64_t poolid, char *value)
         if (ret)
                 GOTO(err_ret, ret);
 
-        if (__allocator_needupdate(poolid, idx) == 0) {
+        if (__diskmap_needupdate(poolid, idx) == 0) {
                 DINFO("need not update\n");
                 goto out;
         }
         
-        ret = __allocator_scan(value, &count, &node_array);
+        ret = __diskmap_scan(value, &count, &node_array);
         if (ret) {
                 DWARN("scan fail\n");
                 goto out;
         }
 
-        ret = __allocator_update(poolid, count, node_array);
+        ret = __diskmap_update(poolid, count, node_array);
         if (ret) {
                 if (ret == ENOENT) {
-                        ret = __allocator_insert(poolid, count, node_array);
+                        ret = __diskmap_insert(poolid, count, node_array);
                         if (ret)
                                 GOTO(err_ret, ret);
                 }
@@ -348,7 +347,7 @@ err_ret:
         return ret;
 }
 
-STATIC int __allocator_worker__(char *buf)
+STATIC int __diskmap_worker__(char *buf)
 {
         int ret;
         etcd_node_t *array = NULL;
@@ -362,7 +361,7 @@ STATIC int __allocator_worker__(char *buf)
                 etcd_node_t *node = array->nodes[i];
                 poolid = atoll(node->key);
 
-                ret = __allocator_pool(poolid, buf);
+                ret = __diskmap_pool(poolid, buf);
                 if (ret)
                         continue;
         }        
@@ -374,7 +373,7 @@ err_ret:
         return ret;
 }
 
-STATIC void *__allocator_worker(void *arg)
+STATIC void *__diskmap_worker(void *arg)
 {
         int ret;
         char *buf;
@@ -386,7 +385,7 @@ STATIC void *__allocator_worker(void *arg)
                 UNIMPLEMENTED(__DUMP__);
 
         while (1) {
-                __allocator_worker__(buf);
+                __diskmap_worker__(buf);
                 sleep(5);
         }
         
@@ -394,24 +393,24 @@ STATIC void *__allocator_worker(void *arg)
         pthread_exit(NULL);
 }
 
-int allocator_init()
+int diskmap_init()
 {
         int ret;
-        allocator_list_t *allocator_list;
+        diskmap_list_t *diskmap_list;
 
-        ret = ymalloc((void **)&allocator_list, sizeof(*allocator_list));
+        ret = ymalloc((void **)&diskmap_list, sizeof(*diskmap_list));
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = sy_rwlock_init(&allocator_list->rwlock, "allocator_list");
+        ret = sy_rwlock_init(&diskmap_list->rwlock, "diskmap_list");
         if (ret)
                 GOTO(err_ret, ret);
 
-        INIT_LIST_HEAD(&allocator_list->list);
+        INIT_LIST_HEAD(&diskmap_list->list);
 
-        __allocator_list__ = allocator_list;
+        __diskmap_list__ = diskmap_list;
         
-        ret = sy_thread_create2(__allocator_worker, NULL, "allocator");
+        ret = sy_thread_create2(__diskmap_worker, NULL, "diskmap");
         if (ret)
                 GOTO(err_ret, ret);
         
@@ -420,41 +419,41 @@ err_ret:
         return ret;
 }
 
-STATIC void __allocator_new_disk(allocator_node_t *node, diskid_t *diskid)
+STATIC void __diskmap_new_disk(diskmap_node_t *node, diskid_t *diskid)
 {
         *diskid = node->array[node->cursor % node->count];
         node->cursor++;
 }
 
-STATIC int __allocator_new__(allocator_t *allocator, int repnum, diskid_t *disks)
+STATIC int __diskmap_new__(diskmap_t *diskmap, int repnum, diskid_t *disks)
 {
         int ret;
 
-        if (allocator->count < repnum) {
+        if (diskmap->count < repnum) {
                 ret = ENOSPC;
-                DWARN("need %u got %u\n", repnum, allocator->count);
+                DWARN("need %u got %u\n", repnum, diskmap->count);
                 GOTO(err_ret, ret);
         }
 
-        int cur = allocator->cursor;
+        int cur = diskmap->cursor;
         for (int i = 0; i < repnum; i++ ) {
-                __allocator_new_disk(allocator->array[(i + cur) % allocator->count],
+                __diskmap_new_disk(diskmap->array[(i + cur) % diskmap->count],
                                      &disks[i]);
         }
 
-        allocator->cursor++;
+        diskmap->cursor++;
 
         return 0;
 err_ret:
         return ret;
 }
 
-STATIC int __allocator_solo(allocator_t *allocator, int repnum, diskid_t *disks)
+STATIC int __diskmap_solo(diskmap_t *diskmap, int repnum, diskid_t *disks)
 {
         int ret;
-        allocator_node_t *node = allocator->array[0];
+        diskmap_node_t *node = diskmap->array[0];
 
-        YASSERT(allocator->count == 1);
+        YASSERT(diskmap->count == 1);
 
         if (node->count < repnum) {
                 ret = ENOSPC;
@@ -474,44 +473,44 @@ err_ret:
         return ret;
 }
 
-STATIC int __allocator_new(uint64_t poolid, int repnum, diskid_t *disks)
+STATIC int __diskmap_new(uint64_t poolid, int repnum, diskid_t *disks)
 {
         int ret;
-        allocator_list_t *allocator_list = __allocator_list__;
-        allocator_t *allocator;
+        diskmap_list_t *diskmap_list = __diskmap_list__;
+        diskmap_t *diskmap;
 
-        YASSERT(allocator_list);
+        YASSERT(diskmap_list);
         
-        ret = sy_rwlock_rdlock(&allocator_list->rwlock);
+        ret = sy_rwlock_rdlock(&diskmap_list->rwlock);
         if (ret)
                 GOTO(err_ret, ret);
 
-        allocator = __allocator_find(allocator_list, poolid);
-        if (allocator == NULL) {
+        diskmap = __diskmap_find(diskmap_list, poolid);
+        if (diskmap == NULL) {
                 ret = ENOSPC;
                 GOTO(err_lock, ret);
         }
 
-        if (gloconf.solomode && allocator->count == 1) {
-                ret = __allocator_solo(allocator, repnum, disks);
+        if (gloconf.solomode && diskmap->count == 1) {
+                ret = __diskmap_solo(diskmap, repnum, disks);
                 if (ret)
                         GOTO(err_lock, ret);
         } else {
-                ret = __allocator_new__(allocator, repnum, disks);
+                ret = __diskmap_new__(diskmap, repnum, disks);
                 if (ret)
                         GOTO(err_lock, ret);
         }
         
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
 
         return 0;
 err_lock:
-        sy_rwlock_unlock(&allocator_list->rwlock);
+        sy_rwlock_unlock(&diskmap_list->rwlock);
 err_ret:
         return ret;
 }
 
-int allocator_new(uint64_t poolid, int repnum, nid_t *disks)
+int diskmap_new(uint64_t poolid, int repnum, nid_t *disks)
 {
 #if ENABLE_ALLOCATE_BALANCE
         int ret;
@@ -519,10 +518,10 @@ int allocator_new(uint64_t poolid, int repnum, nid_t *disks)
 
         YASSERT(repnum + 1 < 16);
 
-        ret = __allocator_new(poolid, repnum + 1, array);
+        ret = __diskmap_new(poolid, repnum + 1, array);
         if (ret) {
                 if (ret == ENOSPC) {
-                        return __allocator_new(poolid, repnum, disks);
+                        return __diskmap_new(poolid, repnum, disks);
                 } else {
                         GOTO(err_ret, ret);
                 }
@@ -535,11 +534,11 @@ int allocator_new(uint64_t poolid, int repnum, nid_t *disks)
 err_ret:
         return ret;
 #else
-        return  __allocator_new(repnum, hardend, tier, disks);
+        return  __diskmap_new(repnum, hardend, tier, disks);
 #endif
 }
 
-int allocator_disk_register(uint64_t poolid, const nid_t *nid, diskid_t *diskid,
+int diskmap_disk_register(uint64_t poolid, const nid_t *nid, diskid_t *diskid,
                             const char *faultdomain)
 {
         int ret;
@@ -564,7 +563,7 @@ err_ret:
         return ret;
 }
 
-int allocator_disk_unregister(uint64_t poolid, const nid_t *nid, const diskid_t *diskid)
+int diskmap_disk_unregister(uint64_t poolid, const nid_t *nid, const diskid_t *diskid)
 {
         int ret;
         char key[MAX_PATH_LEN];
@@ -580,7 +579,7 @@ err_ret:
         return ret;
 }
 
-STATIC int __allocator_disk_dump(const char *pool, const nid_t *nid, char *buf)
+STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
 {
         int ret;
         char key[MAX_PATH_LEN];
@@ -609,7 +608,7 @@ STATIC int __allocator_disk_dump(const char *pool, const nid_t *nid, char *buf)
                 ret = cds_rpc_stat(&diskid, &stat);
                 if (ret || stat.capacity - stat.used < mdsconf.disk_keep) {
                         poolid = atoll(pool);
-                        allocator_disk_unregister(poolid, nid, &diskid);
+                        diskmap_disk_unregister(poolid, nid, &diskid);
                         continue;
                 }
                 
@@ -628,7 +627,7 @@ err_ret:
         return ret;
 }
 
-STATIC int __allocator_node_dump(const char *pool)
+STATIC int __diskmap_node_dump(const char *pool)
 {
         int ret;
         char key[MAX_PATH_LEN], buf[MAX_BUF_LEN];
@@ -653,7 +652,7 @@ STATIC int __allocator_node_dump(const char *pool)
                         continue;
                 }
 
-                ret = __allocator_disk_dump(pool, &nid, buf);
+                ret = __diskmap_disk_dump(pool, &nid, buf);
                 if (ret)
                         GOTO(err_free, ret);
         }
@@ -677,8 +676,7 @@ err_ret:
         return ret;
 }
 
-
-int allocator_dump()
+int diskmap_dump()
 {
         int ret;
         etcd_node_t *array = NULL;
@@ -691,7 +689,7 @@ int allocator_dump()
                 etcd_node_t *node = array->nodes[i];
                 DINFO("pool %s\n", node->key);
 
-                ret = __allocator_node_dump(node->key);
+                ret = __diskmap_node_dump(node->key);
                 if (ret)
                         GOTO(err_free, ret);
         }

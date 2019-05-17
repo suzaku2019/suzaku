@@ -26,7 +26,7 @@
 #include "diskid.h"
 #include "md_lib.h"
 #include "bh.h"
-#include "allocator.h"
+#include "diskmap.h"
 #include "net_global.h"
 #include "nodeid.h"
 #include "mds_rpc.h"
@@ -388,7 +388,7 @@ static int __disk_register()
                         continue;
                 }
 
-                ret = allocator_disk_register(disk->poolid, net_getnid(),
+                ret = diskmap_disk_register(disk->poolid, net_getnid(),
                                               &disk->diskid, disk->faultdomain);
                 if (ret)
                         GOTO(err_lock, ret);

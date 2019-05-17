@@ -30,7 +30,7 @@
 #include "mds_main.h"
 #include "ringlock.h"
 #include "ringlock_rpc.h"
-#include "allocator.h"
+#include "diskmap.h"
 #include "core.h"
 #include "dbg.h"
 
@@ -176,7 +176,7 @@ static int __mon_master(etcd_lock_t *lock, const char *home)
 
                 part_dump(PART_MDS | PART_FRCTL);
 
-                allocator_dump();
+                diskmap_dump();
         }
         
         return 0;
@@ -375,7 +375,7 @@ int mds_run(void *args)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = allocator_init();
+        ret = diskmap_init();
         if (ret)
                 GOTO(err_ret, ret);
 

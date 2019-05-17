@@ -91,9 +91,14 @@ typedef struct __chunk__ {
 } chunk_t;
 
 typedef struct {
+        nid_t nid;
+        uint16_t type;
+} vfmid_t;
+
+typedef struct {
         uint64_t clock;
         int count;
-        nid_t array[0];
+        vfmid_t array[0];
 } vfm_t;
 
 

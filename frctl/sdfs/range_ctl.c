@@ -350,7 +350,6 @@ STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
                                  int op, io_token_t *token, int flags)
 {
         int ret, idx;
-        chunk_t *chunk;
 
         idx = chkid->idx % RANGE_ITEM_COUNT;
         ret = __range_ctl_rec_wrlock(ent, chkid);
@@ -364,7 +363,7 @@ STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
                         GOTO(err_lock, ret);
         }
 
-        chunk = ent->chunk[idx];
+        chunk_t *chunk = ent->chunk[idx];
 retry:
         ret = chunk_get_token(NULL, chunk, op, token);
         if (unlikely(ret)) {
@@ -414,6 +413,38 @@ int range_ctl_get_token(const chkid_t *chkid, int op, io_token_t *token)
 err_ret:
         return ret;
 }
+
+#if 0
+static int __range_ctl_vfm_update(range_entry_t *ent, int idx, chunk_t **_chunk,
+                                  const vfm_t **_vfm)
+{
+        int ret;
+        chunk_t *chunk = ent->chunk[idx];
+        vfm_t *vfm = ent->vfm[idx % PA_ITEM_COUNT];
+        YASSERT(chunk);
+        const chkinfo_t *chkinfo = chunk->chkinfo;
+
+        if (chkinfo == NULL) {
+                goto out;
+        }
+        
+        for (int i = 0; i < chkinfo->repnum; i++) {
+                reploc_t *reploc = &chkinfo->diskid[i];
+
+                ret = disk_connect(&reploc->id, NULL, 0, 0);
+                if (unlikely(ret))
+                        vfm_add(vfm, &reploc->id);
+        }
+        
+out:
+        *_chunk = chunk;
+        *_vfm = vfm;
+        
+        return 0;
+err_ret:
+        return ret;
+}
+#endif
 
 STATIC int __range_ctl_chunk_recovery(range_entry_t *ent, const chkid_t *chkid)
 {

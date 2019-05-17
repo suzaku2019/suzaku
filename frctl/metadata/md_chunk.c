@@ -16,7 +16,7 @@
 #include "md_lib.h"
 #include "net_global.h"
 #include "redis.h"
-#include "allocator.h"
+#include "diskmap.h"
 #include "cds_rpc.h"
 #include "md_db.h"
 #include "disk.h"
@@ -81,7 +81,7 @@ static int __md_newdisk(diskid_t *diskid, const chkinfo_t *chkinfo, int idx)
 
         UNIMPLEMENTED(__WARN__);//get tier
 retry:
-        ret = allocator_new(chkinfo->chkid.poolid, chkinfo->repnum, total_disks);
+        ret = diskmap_new(chkinfo->chkid.poolid, chkinfo->repnum, total_disks);
         if (ret) {
                 DWARN("require %u, hardend %u ret (%d) %s\n", chkinfo->repnum,
                                 mdsconf.chknew_hardend, ret, strerror(ret));
@@ -312,7 +312,7 @@ int md_chunk_create(const fileinfo_t *md, const chkid_t *chkid, chkinfo_t *chkin
         
         ANALYSIS_BEGIN(0);
         
-        ret = allocator_new(chkid->poolid, md->repnum, disk);
+        ret = diskmap_new(chkid->poolid, md->repnum, disk);
         if (ret)
                 GOTO(err_ret, ret);
 

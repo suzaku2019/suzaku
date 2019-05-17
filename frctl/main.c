@@ -19,7 +19,7 @@
 #include "io_analysis.h"
 #include "ringlock.h"
 #include "partition.h"
-#include "allocator.h"
+#include "diskmap.h"
 #include "dbg.h"
 
 static int frctl_srv_running;
@@ -99,7 +99,7 @@ int frctl_srv(void *args)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = allocator_init();
+        ret = diskmap_init();
         if (ret)
                 GOTO(err_ret, ret);
         
