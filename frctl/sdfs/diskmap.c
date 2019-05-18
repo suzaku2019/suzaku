@@ -170,7 +170,7 @@ err_ret:
 }
 
 STATIC int __diskmap_replace(diskmap_t *diskmap, int count,
-                               diskmap_node_t **array)
+                             diskmap_node_t **array, int idx)
 {
         int ret, old;
         diskmap_node_t **old_array;
@@ -183,7 +183,8 @@ STATIC int __diskmap_replace(diskmap_t *diskmap, int count,
         old_array = diskmap->array;
         diskmap->count = count;
         diskmap->array = array;
-                
+        diskmap->etcd_idx = idx;
+
         sy_rwlock_unlock(&diskmap->lock);
 
         for (int i = 0; i < old; i++) {
@@ -211,7 +212,7 @@ STATIC diskmap_t *__diskmap_find(diskmap_list_t *diskmap_list, uint64_t poolid)
 }
 
 STATIC int __diskmap_update(uint64_t poolid, int count,
-                              diskmap_node_t **node_array)
+                            diskmap_node_t **node_array, int idx)
 {
         int ret;
         diskmap_list_t *diskmap_list = __diskmap_list__;
@@ -223,7 +224,7 @@ STATIC int __diskmap_update(uint64_t poolid, int count,
 
         diskmap = __diskmap_find(diskmap_list, poolid);
         if (diskmap) {
-                ret = __diskmap_replace(diskmap, count, node_array);
+                ret = __diskmap_replace(diskmap, count, node_array, idx);
                 if (ret)
                         GOTO(err_lock, ret);
         } else {
@@ -241,7 +242,7 @@ err_ret:
 }
 
 STATIC int __diskmap_insert(uint64_t poolid, int count,
-                              diskmap_node_t **node_array)
+                            diskmap_node_t **node_array, int idx)
 {
         int ret;
         diskmap_list_t *diskmap_list = __diskmap_list__;
@@ -253,7 +254,7 @@ STATIC int __diskmap_insert(uint64_t poolid, int count,
 
         diskmap = __diskmap_find(diskmap_list, poolid);
         if (diskmap) {
-                ret = __diskmap_replace(diskmap, count, node_array);
+                ret = __diskmap_replace(diskmap, count, node_array, idx);
                 if (ret)
                         GOTO(err_lock, ret);
         } else {
@@ -270,7 +271,7 @@ STATIC int __diskmap_insert(uint64_t poolid, int count,
                 diskmap->etcd_idx = -1;
                 list_add_tail(&diskmap->hook, &diskmap_list->list);
 
-                ret = __diskmap_replace(diskmap, count, node_array);
+                ret = __diskmap_replace(diskmap, count, node_array, idx);
                 if (ret)
                         GOTO(err_lock, ret);
         }
@@ -305,6 +306,8 @@ STATIC int __diskmap_needupdate(uint64_t poolid, int idx)
         
         sy_rwlock_unlock(&diskmap_list->rwlock);
 
+        DINFO("pool %d idx %u %u\n", poolid, idx, _idx);
+        
         return _idx != idx;
 }
 
@@ -325,17 +328,17 @@ STATIC int __diskmap_pool(uint64_t poolid, char *value)
                 DINFO("need not update\n");
                 goto out;
         }
-        
+
         ret = __diskmap_scan(value, &count, &node_array);
         if (ret) {
                 DWARN("scan fail\n");
                 goto out;
         }
 
-        ret = __diskmap_update(poolid, count, node_array);
+        ret = __diskmap_update(poolid, count, node_array, idx);
         if (ret) {
                 if (ret == ENOENT) {
-                        ret = __diskmap_insert(poolid, count, node_array);
+                        ret = __diskmap_insert(poolid, count, node_array, idx);
                         if (ret)
                                 GOTO(err_ret, ret);
                 }
@@ -579,14 +582,42 @@ err_ret:
         return ret;
 }
 
+static int __nid_cmp(const void *arg1, const void *arg2)
+{
+        const nid_t *n1 = arg1, *n2 = arg2;
+        //DINFO("%ld %ld %ld\n", *n1, *n2, *n1 - *n2);
+
+        if (n1->id == n2->id)
+                return 0;
+        else if (n1->id < n2->id)
+                return -1;
+        else
+                return 1;
+}
+
+static int __diskid_cmp(const void *arg1, const void *arg2)
+{
+        const diskid_t *n1 = arg1, *n2 = arg2;
+        //DINFO("%ld %ld %ld\n", *n1, *n2, *n1 - *n2);
+
+        if (n1->id == n2->id)
+                return 0;
+        else if (n1->id < n2->id)
+                return -1;
+        else
+                return 1;
+}
+
+
 STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
 {
-        int ret;
+        int ret, count;
         char key[MAX_PATH_LEN];
         etcd_node_t *array = NULL;
         diskid_t diskid;
         uint64_t poolid;
         disk_info_t stat;
+        diskid_t diskids[512];
 
         snprintf(key, MAX_NAME_LEN, "id/%s/node/%d/disk", pool, nid->id);
         ret = etcd_list1(ETCD_POOL, key, &array);
@@ -598,6 +629,7 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
         }
         
         snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d ", nid->id);
+        count = 0;
         for (int i = 0; i < array->num_node; i++) {
                 etcd_node_t *node = array->nodes[i];
                 DINFO("pool %s, nodeid %d diskid %s, faultdomain %s\n",
@@ -611,8 +643,15 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
                         diskmap_disk_unregister(poolid, nid, &diskid);
                         continue;
                 }
-                
-                snprintf(buf + strlen(buf), MAX_NAME_LEN, "%s,", node->key);
+
+                diskids[count] = diskid;
+                count++;
+        }
+
+        qsort(diskids, count, sizeof(diskid_t), __diskid_cmp);
+        
+        for (int i = 0; i < count; i++) {
+                snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d,", diskids[i].id);
         }
 
         buf[strlen(buf) - 1] = '\n';
@@ -629,49 +668,75 @@ err_ret:
 
 STATIC int __diskmap_node_dump(const char *pool)
 {
-        int ret;
+        int ret, count;
         char key[MAX_PATH_LEN], buf[MAX_BUF_LEN];
         etcd_node_t *array = NULL;
-        nid_t nid;
+        nid_t nids[512], nid;
 
         snprintf(key, MAX_NAME_LEN, "id/%s/node", pool);
         ret = etcd_list1(ETCD_POOL, key, &array);
         if (ret)
                 GOTO(err_ret, ret);
 
-        buf[0] = '\0';
+        YASSERT(array->num_node < 512);
+
+        count = 0;
         for (int i = 0; i < array->num_node; i++) {
                 etcd_node_t *node = array->nodes[i];
                 DINFO("pool %s, nodeid %s, faultdomain %s\n",
                       pool, node->key, node->value);
 
                 str2nid(&nid, node->key);
+
                 ret = network_connect(&nid, NULL, 1, 0);
                 if (ret) {
-                        DWARN("node %s offline\n", network_rname(&nid));
+                        DWARN("node %s offline\n", network_rname(&nids[i]));
                         continue;
                 }
 
-                ret = __diskmap_disk_dump(pool, &nid, buf);
-                if (ret)
-                        GOTO(err_free, ret);
+                nids[count] = nid;
+                count++;
         }
-        
+
         free_etcd_node(array);
 
+        qsort(nids, count, sizeof(nid_t), __nid_cmp);
+        
+        buf[0] = '\0';
+        for (int i = 0; i < count; i++) {
+                ret = __diskmap_disk_dump(pool, &nids[i], buf);
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
+        
+        
         int len = strlen(buf);
         if (len && buf[len -1] == '\n') {
                 buf[len - 1] = '\0';
         }
 
         snprintf(key, MAX_NAME_LEN, "id/%s/diskmap", pool);
+
+        char tmp[MAX_BUF_LEN];
+        ret = etcd_get_text(ETCD_POOL, key, tmp, NULL);
+        if (ret) {
+                DINFO("errno  %d\n", ret);
+                //pass
+        } else {
+                if (strcmp(tmp, buf) == 0) {
+                        DINFO("skip update %s\n", key);
+                        goto out;
+                } else {
+                        DINFO("update %s, (%s) (%s)\n", key, tmp, buf);
+                }
+        }
+
         ret = etcd_set_text(ETCD_POOL, key, buf, O_CREAT, -1);
         if (ret)
                 GOTO(err_ret, ret);
-        
+
+out:
         return 0;
-err_free:
-        free_etcd_node(array);
 err_ret:
         return ret;
 }
