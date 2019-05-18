@@ -15,4 +15,9 @@ int diskmap_disk_register(uint64_t poolid, const nid_t *nid, diskid_t *diskid,
                             const char *faultdomain);
 int diskmap_disk_unregister(uint64_t poolid, const nid_t *nid, const diskid_t *diskid);
 
+int disktab_init();
+int disktab_online(const diskid_t *diskid);
+int disktab_rebuild(char *buf);
+
+
 #endif

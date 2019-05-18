@@ -23,6 +23,7 @@
 #include "diskid.h"
 #include "cds_rpc.h"
 #include "ylib.h"
+#include "nodeid.h"
 #include "dbg.h"
 
 #if 1
@@ -52,7 +53,7 @@ typedef struct {
         struct list_head list;
 } diskmap_list_t;
 
-static diskmap_list_t *__diskmap_list__ = NULL; 
+static diskmap_list_t *__diskmap_list__ = NULL;
 
 STATIC int __diskmap_disk(const diskid_t *diskid)
 {
@@ -104,10 +105,12 @@ STATIC int __diskmap_node(const char *nodeinfo, diskmap_node_t **_diskmap_node)
         diskmap_node->count = 0;
         diskmap_node->cursor = _random();
         for (int i = 0; i < disk_count; i++) {
-                str2nid(&diskid, list[i]);
+                char *tmp[2];
+                int tmp_count = 2;
+                _str_split(list[i], '/', tmp, &tmp_count);
+                str2nid(&diskid, tmp[0]);
 
-                ret = __diskmap_disk(&diskid);
-                if (ret)
+                if (atoi(tmp[1]) == 0)
                         continue;
                 
                 diskmap_node->array[diskmap_node->count] = diskid;
@@ -174,11 +177,13 @@ STATIC int __diskmap_replace(diskmap_t *diskmap, int count,
 {
         int ret, old;
         diskmap_node_t **old_array;
-        
+
         ret = sy_rwlock_wrlock(&diskmap->lock);
         if (ret)
                 GOTO(err_ret, ret);
 
+        DBUG("pool %ju idx %u -> %u\n", diskmap->poolid, diskmap->etcd_idx, idx);
+        
         old = diskmap->count;
         old_array = diskmap->array;
         diskmap->count = count;
@@ -306,13 +311,13 @@ STATIC int __diskmap_needupdate(uint64_t poolid, int idx)
         
         sy_rwlock_unlock(&diskmap_list->rwlock);
 
-        DINFO("pool %d idx %u %u\n", poolid, idx, _idx);
+        DBUG("pool %d idx %u %u\n", poolid, idx, _idx);
         
         return _idx != idx;
 }
 
 
-STATIC int __diskmap_pool(uint64_t poolid, char *value)
+STATIC int __diskmap_pool(uint64_t poolid, char *value, int *update)
 {
         int ret, idx, count;
         char key[MAX_PATH_LEN];
@@ -325,7 +330,8 @@ STATIC int __diskmap_pool(uint64_t poolid, char *value)
                 GOTO(err_ret, ret);
 
         if (__diskmap_needupdate(poolid, idx) == 0) {
-                DINFO("need not update\n");
+                DBUG("need not update\n");
+                *update = 0;
                 goto out;
         }
 
@@ -344,15 +350,16 @@ STATIC int __diskmap_pool(uint64_t poolid, char *value)
                 }
         }
 
+        *update = 1;
 out:
         return 0;
 err_ret:
         return ret;
 }
 
-STATIC int __diskmap_worker__(char *buf)
+static int __diskmap_worker_scan(char *buf, int *_update)
 {
-        int ret;
+        int ret, update;
         etcd_node_t *array = NULL;
         uint64_t poolid;
 
@@ -360,16 +367,37 @@ STATIC int __diskmap_worker__(char *buf)
         if (ret)
                 GOTO(err_ret, ret);
 
+        *_update = 0;
         for (int i = 0; i < array->num_node; i++) {
                 etcd_node_t *node = array->nodes[i];
                 poolid = atoll(node->key);
 
-                ret = __diskmap_pool(poolid, buf);
+                ret = __diskmap_pool(poolid, buf, &update);
                 if (ret)
                         continue;
-        }        
+
+                *_update += update;
+        }
         
         free_etcd_node(array);
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+STATIC int __diskmap_worker__(char *buf)
+{
+        int ret, update;
+
+        ret = __diskmap_worker_scan(buf, &update);
+        if (ret)
+                GOTO(err_ret, ret);
+        
+        if (update) {
+                ret = disktab_rebuild(buf);
+                YASSERT(ret == 0);
+        }
         
         return 0;
 err_ret:
@@ -412,6 +440,10 @@ int diskmap_init()
         INIT_LIST_HEAD(&diskmap_list->list);
 
         __diskmap_list__ = diskmap_list;
+
+        ret = disktab_init();
+        if (ret)
+                UNIMPLEMENTED(__DUMP__);
         
         ret = sy_thread_create2(__diskmap_worker, NULL, "diskmap");
         if (ret)
@@ -615,7 +647,6 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
         char key[MAX_PATH_LEN];
         etcd_node_t *array = NULL;
         diskid_t diskid;
-        uint64_t poolid;
         disk_info_t stat;
         diskid_t diskids[512];
 
@@ -636,14 +667,6 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
                       pool, nid->id, node->key, node->value);
 
                 str2diskid(&diskid, node->key);
-
-                ret = cds_rpc_stat(&diskid, &stat);
-                if (ret || stat.capacity - stat.used < mdsconf.disk_keep) {
-                        poolid = atoll(pool);
-                        diskmap_disk_unregister(poolid, nid, &diskid);
-                        continue;
-                }
-
                 diskids[count] = diskid;
                 count++;
         }
@@ -651,7 +674,18 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
         qsort(diskids, count, sizeof(diskid_t), __diskid_cmp);
         
         for (int i = 0; i < count; i++) {
-                snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d,", diskids[i].id);
+                ret = cds_rpc_stat(&diskids[i], &stat);
+                if (ret) {
+                        uint64_t poolid = atoll(pool);
+                        diskmap_disk_unregister(poolid, nid, &diskid);
+                        continue;
+                }
+
+                if (stat.capacity - stat.used < mdsconf.disk_keep) {
+                        snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d/0,", diskids[i].id);
+                } else {
+                        snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d/1,", diskids[i].id);
+                }
         }
 
         buf[strlen(buf) - 1] = '\n';
