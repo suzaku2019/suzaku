@@ -13,6 +13,8 @@
 #define PA_ITEM_COUNT ((SDFS_CHUNK_SPLIT - PA_INFO_AREA) / PA_ITEM_SIZE)
 #define PA_HASH (32)
 
+#define PA_INFO_VFM (0)
+
 inline static void IO_FUNC cid2tid(const chkid_t *chkid, chkid_t *tid)
 {
         *tid = *chkid;
@@ -35,7 +37,7 @@ int pa_srv_set(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version
 int pa_srv_getinfo(const chkid_t *tid, int idx, char *buf, 
                    int *buflen, uint64_t *version);
 int pa_srv_setinfo(const chkid_t *tid, int idx, const char *buf,
-                   int buflen, uint64_t prev_version);
+                   int buflen, uint64_t *version);
 int pa_srv_create();
 
 #endif

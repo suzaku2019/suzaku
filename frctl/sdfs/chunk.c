@@ -56,7 +56,7 @@ int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, uint64_t version,
 
         (void) flag;
         
-        ret = ymalloc((void **)&chunk, sizeof(*chunk));
+        ret = huge_malloc((void **)&chunk, sizeof(*chunk));
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -94,10 +94,10 @@ int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, uint64_t version,
         }
 
         *_chunk = chunk;
-        
+
         return 0;
 err_free:
-        yfree((void **)chunk);
+        huge_free((void **)chunk);
 err_ret:
         return ret;
 }
@@ -123,7 +123,7 @@ void chunk_close(chunk_t **_chunk)
         YASSERT(ret == 0);
         plock_unlock(&chunk->plock);
 
-        yfree((void **)&chunk);
+        huge_free((void **)&chunk);
         *_chunk = NULL;
 }
 

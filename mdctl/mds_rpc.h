@@ -32,5 +32,8 @@ int mds_rpc_get(const char *path, uint64_t offset, void *value, int *valuelen);
 int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version);
 int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *_version);
 int mds_rpc_recovery(const chkid_t *chkid);
+int mds_rpc_setinfo(const chkid_t *chkid, int idx, const void *info,
+                    int buflen, uint64_t *version);
+int mds_rpc_getinfo(const chkid_t *chkid, int idx, void *info, int *buflen, uint64_t *_version);
 
 #endif

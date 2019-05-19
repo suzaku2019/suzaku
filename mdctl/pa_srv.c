@@ -49,6 +49,7 @@ typedef struct {
 typedef struct {
         chkid_t tid;
         plock_t plock;
+        plock_t infolock;
         ltoken_t token;
         uint64_t info_array[PA_INFO_COUNT];
         plock_t record_lock[PA_LOCK];
@@ -423,6 +424,10 @@ static int __pa_srv_entry_create(const chkid_t *tid, pa_entry_t **_ent)
         ret = plock_init(&ent->plock, "pa_entry");
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
+
+        ret = plock_init(&ent->infolock, "info_lock");
+        if (ret)
+                GOTO(err_ret, ret);
         
         for (int i = 0; i < PA_LOCK; i++) {
                 ret = plock_init(&ent->record_lock[i], "record_lock");
@@ -738,67 +743,77 @@ err_ret:
 }
 
 static int __pa_srv_setinfo(pa_entry_t *ent, int idx, const char *buf,
-                            int buflen, uint64_t prev_version)
+                            int buflen, uint64_t *_version)
 {
         int ret;
         uint64_t newversion;
+        uint64_t prev_version = *_version;
 
         if (buflen + sizeof(record_t) > PA_INFO_SIZE) {
                 ret = EINVAL;
                 GOTO(err_ret, ret);
         }
 
-        if ((ent->info_array[idx] != (uint64_t)-1 && prev_version != (uint64_t)-1)
-            && (prev_version != ent->info_array[idx])) {
-                ret = EPERM;
-                GOTO(err_ret, ret);
-        }
-        
         ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
-
+        
+        ret = plock_wrlock(&ent->infolock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        if ((ent->info_array[idx] != (uint64_t)-1 && prev_version != (uint64_t)-1)
+            && (prev_version != ent->info_array[idx])) {
+                ret = EPERM;
+                GOTO(err_lock, ret);
+        }
+        
         newversion = ent->info_array[idx] + 1;
         
         ret = __pa_srv_write(ent, buf, buflen, idx * PA_INFO_SIZE, newversion);
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                GOTO(err_lock, ret);
 
         YASSERT(newversion == ent->info_array[idx] + 1);
         ent->info_array[idx] = newversion;
+        *_version = newversion;
+
+        plock_unlock(&ent->infolock);
         
         return 0;
+err_lock:
+        plock_unlock(&ent->infolock);
 err_ret:
         return ret;
 }
 
 int pa_srv_setinfo(const chkid_t *tid, int idx, const char *buf,
-                   int buflen, uint64_t prev_version)
+                   int buflen, uint64_t *version)
 {
         int ret;
         pa_entry_t *ent;
 
-        DINFO("setinfo "CHKID_FORMAT" @ %u, prev_version %ju\n",
-              CHKID_ARG(tid), idx, prev_version);
+        DINFO("setinfo "CHKID_FORMAT" @ %u, prev version %ju\n",
+              CHKID_ARG(tid), idx, *version);
         
         pa_srv_t *pa_srv = __pa_srv(tid);
         ret = __pa_srv_entry_get(pa_srv, tid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = plock_wrlock(&ent->plock);
+        ret = plock_rdlock(&ent->plock);
         if (unlikely(ret))
                 GOTO(err_release, ret);
         
-        ret = __pa_srv_setinfo(ent, idx, buf, buflen, prev_version);
+        ret = __pa_srv_setinfo(ent, idx, buf, buflen, version);
         if (unlikely(ret)) {
                 GOTO(err_lock, ret);
         }
 
         plock_unlock(&ent->plock);
 
-        DINFO("setinfo "CHKID_FORMAT" @ %u, prev_version %ju success\n",
-              CHKID_ARG(tid), idx, prev_version);
+        DINFO("setinfo "CHKID_FORMAT" @ %u, version %ju success\n",
+              CHKID_ARG(tid), idx, *version);
         
         __pa_srv_entry_release(pa_srv);
         
@@ -816,22 +831,30 @@ static int __pa_srv_getinfo(pa_entry_t *ent, int idx, char *buf,
 {
         int ret;
 
-        if (ent->info_array[idx] == 0) {
-                ret = ENODATA;
-                GOTO(err_ret, ret);
-        }
-
         ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
+        
+        ret = plock_wrlock(&ent->infolock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        if (ent->info_array[idx] == 0) {
+                ret = ENODATA;
+                GOTO(err_lock, ret);
+        }
 
         ret = __pa_srv_read(ent, buf, _buflen, idx * PA_INFO_SIZE, version);
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                GOTO(err_lock, ret);
 
         YASSERT(*version == ent->info_array[idx]);
+
+        plock_unlock(&ent->infolock);
         
         return 0;
+err_lock:
+        plock_unlock(&ent->infolock);
 err_ret:
         return ret;
 }

@@ -36,6 +36,8 @@ typedef enum {
         MDS_GETSTAT,
         MDS_SET,
         MDS_GET,
+        MDS_GETINFO,
+        MDS_SETINFO,
         MDS_PASET,
         MDS_PAGET,
         MDS_RECOVERY,
@@ -721,6 +723,218 @@ err_ret:
         return ret;
 }
 
+static int __mds_srv_setinfo(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
+{
+        int ret, *idx;
+        msg_t *req;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t buflen, infolen;
+        const void *info;
+        const uint64_t *prev_version;
+        const nid_t *nid;
+        uint64_t version;
+
+        req = (void *)buf;
+        mbuffer_get(_buf, req, sizeof(*req));
+        buflen = req->buflen;
+        ret = mbuffer_popmsg(_buf, req, buflen + sizeof(*req));
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        _opaque_decode(req->buf, buflen,
+                       &nid, NULL,
+                       &idx, NULL,
+                       &info, &infolen,
+                       &prev_version, NULL,
+                       NULL);
+
+        version = *prev_version;
+        ret = pa_srv_setinfo(&req->chkid, *idx, buf, infolen, &version);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        corerpc_reply(sockid, msgid, &version, sizeof(version));
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+int mds_rpc_setinfo(const chkid_t *chkid, int idx, const void *info,
+                    int buflen, uint64_t *version)
+{
+        int ret;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t count;
+        msg_t *req;
+        coreid_t coreid;
+        nid_t nid = *net_getnid();
+        uint64_t prev_version = version ? *version : 0;
+
+        ret = part_location(chkid, TYPE_MDCTL, &coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = network_connect(&coreid.nid, NULL, 0, 0);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ANALYSIS_BEGIN(0);
+
+        req = (void *)buf;
+        req->op = MDS_SETINFO;
+        _opaque_encode(&req->buf, &count,
+                       &nid, sizeof(nid),
+                       &idx, sizeof(idx),
+                       info, buflen,
+                       &prev_version, sizeof(prev_version),
+                       NULL);
+
+        req->buflen = count;
+
+        buffer_t rbuf;
+        mbuffer_init(&rbuf, 0);
+        ret = corerpc_postwait("mds_rpc_setinfo", &coreid,
+                               req, sizeof(*req) + count,
+                               NULL, &rbuf,
+                               MSG_MDS, 0, _get_timeout());
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        YASSERT(rbuf.len == sizeof(*version));
+        if (version) {
+                mbuffer_popmsg(&rbuf, version, sizeof(*version));
+        } else {
+                mbuffer_free(&rbuf);
+        }
+        
+        ANALYSIS_QUEUE(0, IO_WARN, NULL);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+static int __mds_srv_getinfo(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
+{
+        int ret, *idx;
+        msg_t *req;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t buflen;
+        const coreid_t *coreid;
+        char *info;
+        const nid_t *nid;
+        uint64_t *version;
+        char tmp[PA_INFO_SIZE + sizeof(uint64_t)];
+
+        req = (void *)buf;
+        mbuffer_get(_buf, req, sizeof(*req));
+        buflen = req->buflen;
+        ret = mbuffer_popmsg(_buf, req, buflen + sizeof(*req));
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        _opaque_decode(req->buf, buflen,
+                       &nid, NULL,
+                       &idx, NULL,
+                       &coreid, NULL,
+                       NULL);
+
+        DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(&req->chkid));
+
+        version = (void *)tmp;
+        info = (void *)tmp + sizeof(uint64_t);
+        int infolen = PA_INFO_SIZE;
+        ret = pa_srv_getinfo(&req->chkid, *idx, info, &infolen, version);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        corerpc_reply(sockid, msgid, tmp, infolen + sizeof(uint64_t));
+
+        DINFO("getinfo "CHKID_FORMAT"[%u] success\n", CHKID_ARG(&req->chkid), idx);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+int mds_rpc_getinfo(const chkid_t *chkid, int idx, void *info, int *infolen,
+                    uint64_t *_version)
+{
+        int ret;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t count;
+        msg_t *req;
+        coreid_t coreid;
+        nid_t nid = *net_getnid();
+        uint64_t version;
+
+        DINFO("pa get "CHKID_FORMAT"\n", CHKID_ARG(chkid));
+        
+        YASSERT(chkid->type != ftype_file);
+        
+        ret = part_location(chkid, TYPE_MDCTL, &coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ret = network_connect(&coreid.nid, NULL, 0, 0);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ANALYSIS_BEGIN(0);
+
+        req = (void *)buf;
+        req->op = MDS_GETINFO;
+        req->chkid = *chkid;
+        _opaque_encode(&req->buf, &count,
+                       &nid, sizeof(nid),
+                       &idx, sizeof(idx),
+                       &coreid, sizeof(coreid),
+                       NULL);
+
+        req->buflen = count;
+
+        buffer_t rbuf;
+        mbuffer_init(&rbuf, 0);
+        ret = corerpc_postwait("mds_rpc_getinfo", &coreid,
+                               req, sizeof(*req) + count,
+                               NULL, &rbuf,
+                               MSG_MDS, 0, _get_timeout());
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        mbuffer_popmsg(&rbuf, &version, sizeof(uint64_t));
+        YASSERT((int)rbuf.len <= *infolen);
+        *infolen = rbuf.len;
+        mbuffer_popmsg(&rbuf, info, rbuf.len);
+
+        if (_version) {
+                *_version = version;
+        }
+        
+        DINFO("pa get "CHKID_FORMAT" success, version %ju\n", CHKID_ARG(chkid), version);
+        
+        ANALYSIS_QUEUE(0, IO_WARN, NULL);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+
+
 int mds_rpc_init()
 {
         int ret;
@@ -737,8 +951,10 @@ int mds_rpc_init()
 
         __request_set_handler(MDS_GET, __mds_srv_get, "mds_srv_get");
         __request_set_handler(MDS_SET, __mds_srv_set, "mds_srv_set");
-        __request_set_handler(MDS_PASET, __mds_srv_paset, "mds_srv_paset");
+        __request_set_handler(MDS_SETINFO, __mds_srv_setinfo, "mds_srv_setinfo");
+        __request_set_handler(MDS_GETINFO, __mds_srv_getinfo, "mds_srv_getinfo");
         __request_set_handler(MDS_PAGET, __mds_srv_paget, "mds_srv_paget");
+        __request_set_handler(MDS_PASET, __mds_srv_paset, "mds_srv_paset");
         __request_set_handler(MDS_RECOVERY, __mds_srv_recovery, "mds_srv_recovery");
 
         rpc_request_register(MSG_MDS, __request_handler, NULL);

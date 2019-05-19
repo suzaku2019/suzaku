@@ -23,8 +23,10 @@
 #include "md_lib.h"
 #include "partition.h"
 #include "ringlock.h"
+#include "diskmap.h"
 #include "range.h"
 #include "chunk.h"
+#include "mds_rpc.h"
 #include "core.h"
 #include "dbg.h"
 
@@ -41,10 +43,155 @@ typedef struct {
         plock_t plock;
         ec_t ec;
         ltoken_t token;
-        vfm_t *vfm[RANGE_CHUNK_COUNT];
+        struct {
+                vfm_t *vfm;
+                plock_t plock;
+                uint64_t version;
+        } vfm[RANGE_CHUNK_COUNT];
         plock_t record_lock[VOL_LOCK];
         chunk_t *chunk[RANGE_ITEM_COUNT];
 } range_entry_t;
+
+#if 1
+
+#define VFM_SIZE(__count__) (sizeof(vfm_t) + sizeof(vfmid_t) * __count__)
+#define VFM_COUNT_MAX 32
+
+static inline int vfm_exist(const vfm_t *vfm, const nid_t *nid) {
+        int i;
+
+        if (unlikely(!vfm)) {
+                return 0;
+        }
+
+        for (i = 0; i < vfm->count; i++) {
+                if (nid->id == vfm->array[i].nid.id)
+                        return 1;
+        }
+
+        return 0;
+}
+
+static inline int vfm_add(vfm_t *vfm, const nid_t *nid)
+{
+        YASSERT(vfm);
+
+        if (vfm_exist(vfm, nid)) {
+                return EEXIST;
+        }
+
+        if (vfm->count + 1 > VFM_COUNT_MAX) {
+                return EIO;
+        }
+
+        vfm->array[vfm->count].nid = *nid;
+        vfm->count++;
+        vfm->clock++;
+
+        return 0;
+}
+
+static int __range_ctl_vfm_load(range_entry_t *ent, int idx)
+{
+        int ret;
+        char info[PA_INFO_SIZE];
+        int infolen = PA_INFO_SIZE;
+        uint64_t version;
+        vfm_t *vfm;
+
+retry:
+        ret = mds_rpc_getinfo(&ent->id, PA_INFO_VFM, info,
+                              &infolen, &version);
+        if (unlikely(ret)) {
+                if (ret == ENODATA) {
+                        memset(info, 0x0, PA_INFO_SIZE);
+                        ret = mds_rpc_setinfo(&ent->id, PA_INFO_VFM, info,
+                                              VFM_SIZE(0), NULL);
+                        if (unlikely(ret))
+                                GOTO(err_ret, ret);
+
+                        goto retry;
+                } else
+                        GOTO(err_ret, ret);
+        }
+        
+        ret = huge_malloc((void **)&vfm, PA_INFO_SIZE);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        memcpy(vfm, info, infolen);
+        ent->vfm[idx % PA_ITEM_COUNT].vfm = vfm;
+        ent->vfm[idx % PA_ITEM_COUNT].version = version;
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+static int __range_ctl_vfm_update(range_entry_t *ent, int idx, chunk_t **_chunk,
+                                  vfm_t *_vfm)
+{
+        int ret, vfm_idx = idx % PA_ITEM_COUNT;
+        chunk_t *chunk = ent->chunk[idx];
+        const chkinfo_t *chkinfo = chunk->chkinfo;
+        vfm_t *vfm;
+        uint64_t *version;
+        
+        ret = plock_wrlock(&ent->vfm[vfm_idx].plock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        if (chkinfo == NULL) {
+                goto out;
+        }
+
+retry:
+        vfm = ent->vfm[vfm_idx].vfm;
+        version = &ent->vfm[vfm_idx].version;
+        if (vfm == NULL) {
+                ret = __range_ctl_vfm_load(ent, idx);
+                if (unlikely(ret))
+                        GOTO(err_lock, ret);
+
+                goto retry;
+        }
+
+        
+        int update = 0;
+        for (int i = 0; i < (int)chkinfo->repnum; i++) {
+                const reploc_t *reploc = &chkinfo->diskid[i];
+
+                if (unlikely(!disktab_online(&reploc->id))) {
+                        ret = vfm_add(vfm, &reploc->id);
+                        if (unlikely(ret)) {
+                                continue;
+                        }
+
+                        update++;
+                }
+        }
+
+        if (unlikely(update)) {
+                ret = mds_rpc_setinfo(&ent->id, PA_INFO_VFM, vfm,
+                                      VFM_SIZE(vfm->count), version);
+                if (unlikely(ret))
+                        GOTO(err_lock, ret);
+        }
+
+        
+out:
+        *_chunk = chunk;
+        memcpy(_vfm, vfm, VFM_SIZE(vfm->count));
+
+        plock_unlock(&ent->vfm[vfm_idx].plock);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->vfm[vfm_idx].plock);
+err_ret:
+        return ret;
+}
+#endif
 
 STATIC int __range_ctl_cmp(const void *v1, const void *v2)
 {
@@ -129,7 +276,7 @@ STATIC int __range_ctl_entry_create(const chkid_t *chkid, range_entry_t **_ent)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        ret = ymalloc((void **)&ent, sizeof(*ent));
+        ret = huge_malloc((void **)&ent, sizeof(*ent));
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -147,6 +294,12 @@ STATIC int __range_ctl_entry_create(const chkid_t *chkid, range_entry_t **_ent)
         ret = plock_init(&ent->plock, "pa_entry");
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
+
+        for (int i = 0; i < RANGE_CHUNK_COUNT; i++) {
+                ret = plock_init(&ent->vfm[i].plock, "vfm");
+                if (unlikely(ret))
+                        UNIMPLEMENTED(__DUMP__);
+        }
         
         for (int i = 0; i < VOL_LOCK; i++) {
                 ret = plock_init(&ent->record_lock[i], "record_lock");
@@ -175,9 +328,15 @@ STATIC int __range_ctl_entry_free(range_entry_t **_ent)
                         chunk_close(&ent->chunk[i]);
                 }
         }
+
+        for (int i = 0; i < RANGE_CHUNK_COUNT; i++) {
+                if (ent->vfm[i].vfm) {
+                        huge_free((void **)&ent->vfm[i].vfm);
+                }
+        }
         
         plock_unlock(&ent->plock);
-        yfree((void **)&ent);
+        huge_free((void **)&ent);
         *_ent = NULL;
 
         return 0;
@@ -350,6 +509,9 @@ STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
                                  int op, io_token_t *token, int flags)
 {
         int ret, idx;
+        chunk_t *chunk;
+        char _vfm[PA_INFO_SIZE];
+        vfm_t *vfm = (void *)_vfm;
 
         idx = chkid->idx % RANGE_ITEM_COUNT;
         ret = __range_ctl_rec_wrlock(ent, chkid);
@@ -363,9 +525,11 @@ STATIC int __range_ctl_get_token(range_entry_t *ent, const chkid_t *chkid,
                         GOTO(err_lock, ret);
         }
 
-        chunk_t *chunk = ent->chunk[idx];
+        ret = __range_ctl_vfm_update(ent, idx, &chunk, vfm);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
 retry:
-        ret = chunk_get_token(NULL, chunk, op, token);
+        ret = chunk_get_token(vfm, chunk, op, token);
         if (unlikely(ret)) {
                 if (ret == ENOENT && flags == O_CREAT) {
                         ret = __range_ctl_chunk_create(chkid, chunk);
@@ -414,41 +578,13 @@ err_ret:
         return ret;
 }
 
-#if 0
-static int __range_ctl_vfm_update(range_entry_t *ent, int idx, chunk_t **_chunk,
-                                  const vfm_t **_vfm)
-{
-        int ret;
-        chunk_t *chunk = ent->chunk[idx];
-        vfm_t *vfm = ent->vfm[idx % PA_ITEM_COUNT];
-        YASSERT(chunk);
-        const chkinfo_t *chkinfo = chunk->chkinfo;
-
-        if (chkinfo == NULL) {
-                goto out;
-        }
-        
-        for (int i = 0; i < chkinfo->repnum; i++) {
-                reploc_t *reploc = &chkinfo->diskid[i];
-
-                if (unlikely(!disktab_online(&reploc->id))) {
-                        vfm_add(vfm, &reploc->id);
-                }
-        }
-
-out:
-        *_chunk = chunk;
-        *_vfm = vfm;
-        
-        return 0;
-err_ret:
-        return ret;
-}
-#endif
 
 STATIC int __range_ctl_chunk_recovery(range_entry_t *ent, const chkid_t *chkid)
 {
         int ret, idx;
+        chunk_t *chunk;
+        char _vfm[PA_INFO_SIZE];
+        vfm_t *vfm = (void *)_vfm;
 
         idx = chkid->idx % RANGE_ITEM_COUNT;
         ret = __range_ctl_rec_wrlock(ent, chkid);
@@ -462,9 +598,11 @@ STATIC int __range_ctl_chunk_recovery(range_entry_t *ent, const chkid_t *chkid)
                         GOTO(err_lock, ret);
         }
 
-        chunk_t *chunk = ent->chunk[idx];
-        //vfm_t *vfm = ent->vfm[idx % PA_ITEM_COUNT];
-        ret = chunk_recovery(NULL, chunk);
+        ret = __range_ctl_vfm_update(ent, idx, &chunk, vfm);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
+
+        ret = chunk_recovery(vfm, chunk);
         if (unlikely(ret)) {
                 GOTO(err_lock, ret);
         }
