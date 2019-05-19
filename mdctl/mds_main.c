@@ -174,7 +174,7 @@ static int __mon_master(etcd_lock_t *lock, const char *home)
 
                 sleep(gloconf.rpc_timeout / 2);
 
-                part_dump(PART_MDS | PART_FRCTL);
+                part_dump(TYPE_MDCTL | TYPE_FRCTL);
 
                 diskmap_dump();
         }
@@ -261,14 +261,10 @@ err_ret:
 }
 
 
-static int __mds_prep(const char *home, int daemon)
+static int __mds_prep(const char *home)
 {
         int ret;
         char path[MAX_PATH_LEN];
-
-        ret = ly_init(daemon, ROLE_MDCTL, -1);
-        if (ret)
-                GOTO(err_ret, ret);
 
         ret = path_validate(home, 1, 1);
         if (ret)
@@ -279,12 +275,17 @@ static int __mds_prep(const char *home, int daemon)
         if (ret)
                 GOTO(err_ret, ret);
 
-        /*if (gloconf.check_mountpoint && !sy_is_mountpoint(home, REISERFS_SUPER_MAGIC)*/
-            /*&& !sy_is_mountpoint(home, EXT4_SUPER_MAGIC)) {*/
-                /*ret = ENODEV;*/
-                /*GOTO(err_ret, ret);*/
-        /*}*/
+        ret = sdfs_init_verbose(ROLE_MDCTL, TYPE_MDCTL,
+                                CORE_FLAG_PASSIVE | CORE_FLAG_PRIVATE,
+                                MOD_PART | MOD_RINGLOCK | MOD_DISKMAP, 
+                                gloconf.polling_core);
+        if (ret)
+                GOTO(err_ret, ret);
 
+        ret = ringlock_rpc_init();
+        if (ret)
+                GOTO(err_ret, ret);
+        
         ret = ly_update_status("running", -1);
         if (ret)
                 GOTO(err_ret, ret);
@@ -338,10 +339,11 @@ int mds_run(void *args)
         signal(SIGKILL, mds_exit_handler);
         signal(SIGINT, mds_exit_handler);
 
-        ret = __mds_prep(mds_args->home, mds_args->daemon);
+        ret = __mds_prep(mds_args->home);
         if (ret)
                 GOTO(err_ret, ret);
 
+#if 0
         nodeid_t id;
         ret = nodeid_load(&id);
         if (ret)
@@ -350,32 +352,9 @@ int mds_run(void *args)
         nid_t nid = {0};
         nid.id = id;
         net_setnid(&nid);
-
-        ret = core_init(4, CORE_FLAG_PASSIVE | CORE_FLAG_ACTIVE);
-        if (ret)
-                GOTO(err_ret, ret);
-        
-        ret = part_register(PART_MDS);
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = ringlock_init(RINGLOCK_MDS);
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = ringlock_rpc_init();
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = part_init(PART_MDS | PART_FRCTL);
-        if (ret)
-                GOTO(err_ret, ret);
+#endif
 
         ret = pa_srv_create();
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = diskmap_init();
         if (ret)
                 GOTO(err_ret, ret);
 

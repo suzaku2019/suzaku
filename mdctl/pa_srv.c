@@ -258,7 +258,7 @@ static int __pa_srv_set(pa_entry_t *ent, const chkinfo_t *chkinfo,
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, RINGLOCK_MDS, 0, &ent->token);
+        ret = ringlock_check(chkid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
@@ -408,7 +408,7 @@ static int __pa_srv_entry_create(const chkid_t *tid, pa_entry_t **_ent)
         pa_entry_t *ent;
         ltoken_t token;
 
-        ret = ringlock_check(tid, RINGLOCK_MDS, O_CREAT, &token);
+        ret = ringlock_check(tid, TYPE_MDCTL, O_CREAT, &token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -619,7 +619,7 @@ static int __pa_srv_get(pa_entry_t *ent, const chkid_t *chkid,
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, RINGLOCK_MDS, 0, &ent->token);
+        ret = ringlock_check(chkid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
@@ -683,7 +683,7 @@ static int __pa_srv_recovery(pa_entry_t *ent)
 
         DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(&ent->tid));
         
-        ret = ringlock_check(&ent->tid, RINGLOCK_MDS, 0, &ent->token);
+        ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -754,7 +754,7 @@ static int __pa_srv_setinfo(pa_entry_t *ent, int idx, const char *buf,
                 GOTO(err_ret, ret);
         }
         
-        ret = ringlock_check(&ent->tid, RINGLOCK_MDS, 0, &ent->token);
+        ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -821,7 +821,7 @@ static int __pa_srv_getinfo(pa_entry_t *ent, int idx, char *buf,
                 GOTO(err_ret, ret);
         }
 
-        ret = ringlock_check(&ent->tid, RINGLOCK_MDS, 0, &ent->token);
+        ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 

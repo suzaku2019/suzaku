@@ -83,26 +83,18 @@ int frctl_srv(void *args)
 #if ENABLE_MEM_CACHE1
         use_memcache = 1;
 #endif
-        ret = sdfs_init_verbose(ROLE_FRCTL, gloconf.polling_core);
+        ret = sdfs_init_verbose(ROLE_FRCTL, TYPE_FRCTL,
+                                CORE_FLAG_PASSIVE | CORE_FLAG_PRIVATE,
+                                MOD_RANGE | MOD_PART | MOD_RINGLOCK
+                                | MOD_MD | MOD_DISKMAP, 
+                                gloconf.polling_core);
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = part_register(PART_FRCTL);
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = ringlock_init(RINGLOCK_FRCTL);
-        if (ret)
-                GOTO(err_ret, ret);
-        
         ret = io_analysis_init(ROLE_FRCTL, 0);
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = diskmap_init();
-        if (ret)
-                GOTO(err_ret, ret);
-        
         DINFO("frctl started...\n");
 
 #if 1

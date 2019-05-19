@@ -32,7 +32,7 @@
 
 int range_chunk_location(const chkid_t *chkid, coreid_t *coreid)
 {
-        return part_location(chkid, PART_FRCTL, coreid);
+        return part_location(chkid, TYPE_FRCTL, coreid);
 }
 
 int range_init()

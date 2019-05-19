@@ -42,11 +42,6 @@ static void __chunk_replica_write__(void *arg)
         int ret;
         chunk_write_ctx_t *ctx = arg;
         
-        ret = disk_connect(ctx->diskid, NULL, 1, 0);
-        if (unlikely(ret)) {
-                GOTO(err_ret, ret);
-        }
-
         ret = cds_rpc_write(ctx->diskid, &ctx->io, ctx->buf);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);

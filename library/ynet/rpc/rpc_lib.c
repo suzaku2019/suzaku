@@ -42,29 +42,6 @@ int rpc_init(net_proto_t *op, const char *name, int seq, const char *path)
         if (seq != -1)
                 ng.seq = seq;
 
-        if (ng.daemon) {
-                char key[MAX_NAME_LEN], value[MAX_BUF_LEN];
-                sprintf(key, "%s/%s/nid", ng.home, YFS_STATUS_PRE);
-
-                ret = path_validate(key, YLIB_NOTDIR, YLIB_DIRCREATE);
-                if (ret)
-                        GOTO(err_ret, ret);
-
-                ret = _get_text(key, value, MAX_BUF_LEN);
-                if (ret < 0) {
-                        ret = -ret;
-                        if (ret == ENOENT) {
-                                ng.local_nid.id = YNET_NID_NULL;
-                        } else
-                                GOTO(err_ret, ret);
-                } else {
-                        str2nid(&ng.local_nid, value);
-                        DINFO("load nid %d\n", ng.local_nid.id);
-                }
-        } else {
-                ng.local_nid.id = YNET_NID_NULL;
-        }
-
         _strcpy(ng.name, name);
 
         ret = jobdock_init(netable_rname);

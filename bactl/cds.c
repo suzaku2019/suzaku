@@ -24,6 +24,7 @@
 #include "schedule.h"
 #include "redis.h"
 #include "core.h"
+#include "cds_rpc.h"
 #include "io_analysis.h"
 #include "net_global.h"
 #include "diskio.h"
@@ -201,24 +202,33 @@ err_ret:
 
 int cds_init(const char *home)
 {
-        int ret;
-
-        ret = disk2idx_init();
-        if (ret)
-                GOTO(err_ret, ret);
-        
-        int flag = CORE_FLAG_PASSIVE | CORE_FLAG_AIO;
+        int ret, flag = 0;
 #if 1
         if (cdsconf.cds_polling && gloconf.polling_timeout == 0) {
                 flag |= CORE_FLAG_POLLING;
         }
 #endif
 
-        ret = core_init(gloconf.polling_core, flag);
+        ret = sdfs_init_verbose(ROLE_BACTL, 0,
+                                flag | CORE_FLAG_PASSIVE | CORE_FLAG_PRIVATE | CORE_FLAG_AIO,
+                                0,
+                                gloconf.polling_core);
         if (ret)
                 GOTO(err_ret, ret);
 
+        ret = disk2idx_init();
+        if (ret)
+                GOTO(err_ret, ret);
+        
         ret = disk_init(home);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        ret = cds_rpc_init();
+        if (ret)
+                GOTO(err_ret, ret);
+        
+        ret = disk_fs_thread_init();
         if (ret)
                 GOTO(err_ret, ret);
         
@@ -226,6 +236,10 @@ int cds_init(const char *home)
         if (ret)
                 GOTO(err_ret, ret);
 
+        ret = io_analysis_init("cds", 0);
+        if (ret)
+                GOTO(err_ret, ret);
+        
         return 0;
 err_ret:
         return ret;
@@ -247,14 +261,12 @@ inline void cds_exit_handler(int sig)
 int cds_run(void *args)
 {
         int ret;
-        int daemon;
         net_proto_t net_op;
         const char *home;
         char path[MAX_PATH_LEN];
         cds_args_t *cds_args;
 
         cds_args = args;
-        daemon = cds_args->daemon;
         home = cds_args->home;
 
         snprintf(path, MAX_NAME_LEN, "%s/status/status.pid", home);
@@ -275,10 +287,6 @@ int cds_run(void *args)
         use_memcache = 1;
 #endif
 
-        ret = ly_init(daemon, ROLE_BACTL, 524288 * 10);
-        if (ret)
-                GOTO(err_ret, ret);
-
         ret = path_validate(home, 1, 1);
         if (ret)
                 GOTO(err_ret, ret);
@@ -286,18 +294,10 @@ int cds_run(void *args)
         cds_info.running = 1;
         __fence_test_need__ = 1;
 
-        ret = io_analysis_init("cds", 0);
-        if (ret)
-                GOTO(err_ret, ret);
-        
         ret = cds_init(home);
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = disk_fs_thread_init();
-        if (ret)
-                GOTO(err_ret, ret);
-        
         ret = rpc_start(); /*begin serivce*/
         if (ret)
                 GOTO(err_ret, ret);

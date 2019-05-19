@@ -22,6 +22,7 @@
 #include "md_lib.h"
 #include "diskid.h"
 #include "network.h"
+#include "diskmap.h"
 #include "mem_cache.h"
 #include "disk.h"
 #include "schedule.h"
@@ -181,6 +182,11 @@ int cds_rpc_read(const diskid_t *diskid, const io_t *io, buffer_t *_buf)
         msg_t *req;
         nid_t nid;        
 
+        if (unlikely(!disktab_online(diskid))) {
+                ret = ENODEV;
+                GOTO(err_ret, ret);
+        }
+        
         ret = d2n_nid(diskid, &nid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -280,6 +286,11 @@ int cds_rpc_write(const diskid_t *diskid, const io_t *io,
         msg_t *req;
         nid_t nid;        
 
+        if (unlikely(!disktab_online(diskid))) {
+                ret = ENODEV;
+                GOTO(err_ret, ret);
+        }
+        
         ret = d2n_nid(diskid, &nid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);

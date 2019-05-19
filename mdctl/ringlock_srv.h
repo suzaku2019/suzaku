@@ -7,8 +7,10 @@
 #define RANGE_FORMAT "(%ld, %ld]"
 #define RANGE_ARG(_id) (_id)->begin, (_id)->end
 
-#define RINGLOCK_MDS 1
-#define RINGLOCK_FRCTL 2
+#if 0
+#define TYPE_MDCTL 1
+#define TYPE_FRCTL 2
+#endif
 
 int ringlock_srv_lock(const range_t *range, uint32_t type, const coreid_t *coreid,
                       ltoken_t *token);

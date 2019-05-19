@@ -67,7 +67,6 @@ typedef struct {
 }filter_t;
 
 extern int ly_prep(int daemon, const char *home, const char *logname, int64_t maxopenfile);
-extern int ly_init(int daemon, const char *name, int64_t maxopenfile);
 extern int ly_run(const char *home, int (*server)(void *args), void *args);
 extern int ly_update_status(const char *status, int step);
 extern int ly_destroy(void);

@@ -12,6 +12,7 @@
 #include "volume.h"
 #include "disk.h"
 #include "range.h"
+#include "diskmap.h"
 #include "mds_rpc.h"
 #include "md_lib.h"
 
@@ -32,8 +33,6 @@ static int __chunk_recovery__(const chkid_t *chkid)
 
 static void __chunk_recovery(const chkinfo_t *chkinfo)
 {
-        int ret;
-
         __chunk_recovery__(&chkinfo->chkid);
         return;
         
@@ -45,8 +44,7 @@ static void __chunk_recovery(const chkinfo_t *chkinfo)
                         break;
                 }
 
-                ret = disk_connect(&reploc->id, NULL, 0, 0);
-                if (ret) {
+                if (unlikely(!disktab_online(&reploc->id))) {
                         __chunk_recovery__(&chkinfo->chkid);
                         break;
                 }

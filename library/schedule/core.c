@@ -350,7 +350,7 @@ int core_init(int polling_core, int flag)
         if (unlikely(ret))
                 UNIMPLEMENTED(__DUMP__);
 
-        ret = corenet_init();
+        ret = corenet_init(flag);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -742,6 +742,7 @@ int core_getid(coreid_t *coreid)
         }
 
         coreid->nid = *net_getnid();
+        YASSERT(coreid->nid.id > 0);
         coreid->idx = core->hash;
 
         return 0;

@@ -206,9 +206,21 @@ typedef struct {
 #define USEC_PER_HOU                ((LLU)USEC_PER_SEC * SEC_PER_HOU)
 #define USEC_PER_DAY                ((LLU)USEC_PER_SEC * SEC_PER_DAY)
 
+static inline const char *role(int r)
+{
+        char *array[] = {"mdctl", "bactl", "frctl"};
+
+        return array[r];
+}
+
 #define ROLE_MDCTL "mdctl"
 #define ROLE_BACTL "bactl"
 #define ROLE_FRCTL "frctl"
+
+#define TYPE_MDCTL 0x0001
+#define TYPE_FRCTL 0x0002
+#define TYPE_BACTL 0x0004
+
 
 #define ETCD_POOL "pool"
 #define ETCD_KV "kv"

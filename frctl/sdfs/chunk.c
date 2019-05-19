@@ -19,12 +19,13 @@
 #include "mds.h"
 #include "network.h"
 #include "disk.h"
+#include "diskmap.h"
 #include "cds_rpc.h"
 #include "dbg.h"
 
 void chkinfo2str(const chkinfo_t *chkinfo, char *buf)
 {
-        int ret, i, tmo;
+        int i;
         const char *stat;
         const reploc_t *diskid;
 
@@ -34,9 +35,7 @@ void chkinfo2str(const chkinfo_t *chkinfo, char *buf)
         for (i = 0; i < (int)chkinfo->repnum; ++i) {
                 diskid = &chkinfo->diskid[i];
 
-                tmo = ng.daemon ? 0 : 1;
-                ret = disk_connect(&diskid->id, NULL, tmo, 0);
-                if (ret) {
+                if (unlikely(!disktab_online(&diskid->id))) {
                         stat = "offline";
                 } else if (diskid->status == __S_DIRTY) {
                         stat = "dirty";
@@ -206,6 +205,11 @@ static int __chunk_replica_connect(const diskid_t *diskid, const chkid_t *chkid,
 
         ANALYSIS_BEGIN(0);
 
+        if (unlikely(!disktab_online(diskid))) {
+                ret = ENODEV;
+                GOTO(err_ret, ret);
+        }
+        
         ret = disk_connect(diskid, &ltime, 1, 0);
         if (unlikely(ret))
                 GOTO(err_ret, ret);

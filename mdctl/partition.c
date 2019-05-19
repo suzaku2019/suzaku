@@ -197,36 +197,39 @@ static int __part_init_private(va_list ap)
 
         va_end(ap);
         
-        if (*type & PART_MDS) {
+        if (*type & TYPE_MDCTL) {
                 ret = __part_init(ROLE_MDCTL, &part);
                 if (ret)
                         UNIMPLEMENTED(__DUMP__);
 
-                variable_set(VARIABLE_PART_MDS, part);
+                variable_set(VARIABLE_TYPE_MDCTL, part);
         }
 
-        if (*type & PART_FRCTL) {
+        if (*type & TYPE_FRCTL) {
                 ret = __part_init(ROLE_FRCTL, &part);
                 if (ret)
                         UNIMPLEMENTED(__DUMP__);
 
-                variable_set(VARIABLE_PART_FRCTL, part);
+                variable_set(VARIABLE_TYPE_FRCTL, part);
         }
 
         return 0;
 }
 
-int part_init(int type)
+int part_init()
 {
         int ret;
+        int type = TYPE_MDCTL | TYPE_FRCTL;
 
-        if (type & PART_MDS) {
+        YASSERT(__part_mds__ == NULL || __part_frctl__ == NULL);
+        
+        if (type & TYPE_MDCTL) {
                 ret = __part_init(ROLE_MDCTL, &__part_mds__);
                 if (ret)
                         GOTO(err_ret, ret);
         }
 
-        if (type & PART_FRCTL) {
+        if (type & TYPE_FRCTL) {
                 ret = __part_init(ROLE_FRCTL, &__part_frctl__);
                 if (ret)
                         GOTO(err_ret, ret);
@@ -291,12 +294,12 @@ void int2coreid(const uint32_t coreid32, coreid_t *coreid)
 
 int part_hash(uint64_t id, int type, coreid_t *coreid)
 {
-        int ret, var = (type == PART_MDS) ? VARIABLE_PART_MDS : VARIABLE_PART_FRCTL;
+        int ret, var = (type == TYPE_MDCTL) ? VARIABLE_TYPE_MDCTL : VARIABLE_TYPE_FRCTL;
         part_t *part = variable_get(var);
         uint32_t _coreid;
 
         if (unlikely(part == NULL)) {
-                part = (type == PART_MDS) ? __part_mds__ : __part_frctl__;
+                part = (type == TYPE_MDCTL) ? __part_mds__ : __part_frctl__;
         }
 
         ret = sy_spin_lock(&part->lock);
@@ -353,13 +356,13 @@ static int __part_register__(va_list ap)
 
         va_end(ap);
         
-        if (*type & PART_FRCTL) {
+        if (*type & TYPE_FRCTL) {
                 ret = __part_register(ROLE_FRCTL);
                 if(unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
         }
  
-        if (*type & PART_MDS) {
+        if (*type & TYPE_MDCTL) {
                 ret = __part_register(ROLE_MDCTL);
                 if(unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
@@ -471,11 +474,11 @@ err_ret:
 
 int part_dump(int type)
 {
-        if (type & PART_MDS) {
+        if (type & TYPE_MDCTL) {
                 __part_dump(ROLE_MDCTL);
         }
 
-        if (type & PART_FRCTL) {
+        if (type & TYPE_FRCTL) {
                 __part_dump(ROLE_FRCTL);
         }
         
@@ -523,11 +526,11 @@ err_ret:
 
 int part_range(int type, const coreid_t *coreid, range_t *range)
 {
-        int ret, var = (type == PART_MDS) ? VARIABLE_PART_MDS : VARIABLE_PART_FRCTL;
+        int ret, var = (type == TYPE_MDCTL) ? VARIABLE_TYPE_MDCTL : VARIABLE_TYPE_FRCTL;
         part_t *part = variable_get(var);
 
         if (unlikely(part == NULL)) {
-                part = (type == PART_MDS) ? __part_mds__ : __part_frctl__;
+                part = (type == TYPE_MDCTL) ? __part_mds__ : __part_frctl__;
         }
 
         ret = sy_spin_lock(&part->lock);
@@ -553,7 +556,7 @@ int part_location(const chkid_t *chkid, int type, coreid_t *coreid)
         rid_t rid;
         uint64_t id;
 
-        if (type == PART_FRCTL) {
+        if (type == TYPE_FRCTL) {
                 cid2rid(chkid, &rid);
                 id = rid.id + rid.idx;
         } else {

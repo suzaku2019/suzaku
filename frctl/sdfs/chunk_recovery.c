@@ -18,6 +18,7 @@
 #include "sdfs_lib.h"
 #include "sdfs_chunk.h"
 #include "network.h"
+#include "diskmap.h"
 #include "cds_rpc.h"
 #include "main_loop.h"
 #include "md_proto.h"
@@ -155,9 +156,10 @@ int chunk_recovery_sync(const chkinfo_t *chkinfo)
                         continue;
                 }
 
-                ret = disk_connect(&reploc->id, NULL, 1, 1);
-                if (ret)
+                if (unlikely(!disktab_online(&reploc->id))) {
+                        ret = ENODEV;
                         GOTO(err_ret, ret);
+                }
 
                 src[src_count] = reploc->id;
                 src_count++;
@@ -433,9 +435,10 @@ int chunk_recovery_sync_ec(const ec_t *ec, const chkinfo_t *chkinfo)
                         src_count++;
                         src_in_err[i] = 0;
 
-                        ret = disk_connect(&reploc->id, NULL, 1, 1);
-                        if (ret)
+                        if (unlikely(!disktab_online(reploc->id))) {
+                                ret = ENODEV;
                                 GOTO(err_ret, ret);
+                        }
                 }
         }
 

@@ -114,7 +114,7 @@ inline static void __core_interrupt_eventfd_func(void *arg)
         }
 }
 
-static int __corenet_tcp_init(core_t *core, __corenet_t *corenet)
+static int __corenet_tcp_init(core_t *core, __corenet_t *corenet, int flag)
 {
         int ret;
 
@@ -133,11 +133,13 @@ static int __corenet_tcp_init(core_t *core, __corenet_t *corenet)
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
         }
-                
-        ret = corenet_tcp_passive(&corenet->coreid, &corenet->port,
-                                  &corenet->sd);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
+
+        if (flag & CORE_FLAG_PASSIVE) {
+                ret = corenet_tcp_passive(&corenet->coreid, &corenet->port,
+                                          &corenet->sd);
+                if (unlikely(ret))
+                        GOTO(err_ret, ret);
+        }
 
         return 0;
 err_ret:
@@ -149,6 +151,7 @@ static int __corenet_init(va_list ap)
         int ret;
         __corenet_t *corenet;
         core_t *core = core_self();
+        int *flag = va_arg(ap, int *);
 
         va_end(ap);
         
@@ -156,14 +159,16 @@ static int __corenet_init(va_list ap)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = core_getid(&corenet->coreid);
-        if (unlikely(ret))
-                GOTO(err_free, ret);
+        if (*flag & CORE_FLAG_PASSIVE) {
+                ret = core_getid(&corenet->coreid);
+                if (unlikely(ret))
+                        GOTO(err_free, ret);
+        }
 
         if (gloconf.rdma) {
                 UNIMPLEMENTED(__DUMP__);
         } else {
-                ret = __corenet_tcp_init(core, corenet);
+                ret = __corenet_tcp_init(core, corenet, *flag);
                 if (unlikely(ret))
                         GOTO(err_free, ret);
         }
@@ -193,11 +198,11 @@ err_ret:
         return ret;
 }
 
-int corenet_init()
+int corenet_init(int flag)
 {
         int ret;
                 
-        ret = core_init_modules("corenet", __corenet_init, NULL);
+        ret = core_init_modules("corenet", __corenet_init, &flag, NULL);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         

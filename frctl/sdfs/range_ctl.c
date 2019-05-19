@@ -125,7 +125,7 @@ STATIC int __range_ctl_entry_create(const chkid_t *chkid, range_entry_t **_ent)
         fileid_t fileid;
         ltoken_t token;
 
-        ret = ringlock_check(chkid, RINGLOCK_FRCTL, O_CREAT, &token);
+        ret = ringlock_check(chkid, TYPE_FRCTL, O_CREAT, &token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -400,7 +400,7 @@ int range_ctl_get_token(const chkid_t *chkid, int op, io_token_t *token)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, RINGLOCK_FRCTL, 0, &ent->token);
+        ret = ringlock_check(chkid, TYPE_FRCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -431,11 +431,11 @@ static int __range_ctl_vfm_update(range_entry_t *ent, int idx, chunk_t **_chunk,
         for (int i = 0; i < chkinfo->repnum; i++) {
                 reploc_t *reploc = &chkinfo->diskid[i];
 
-                ret = disk_connect(&reploc->id, NULL, 0, 0);
-                if (unlikely(ret))
+                if (unlikely(!disktab_online(&reploc->id))) {
                         vfm_add(vfm, &reploc->id);
+                }
         }
-        
+
 out:
         *_chunk = chunk;
         *_vfm = vfm;
@@ -492,7 +492,7 @@ int range_ctl_chunk_recovery(const chkid_t *chkid)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, RINGLOCK_FRCTL, 0, &ent->token);
+        ret = ringlock_check(chkid, TYPE_FRCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -549,7 +549,7 @@ int range_ctl_chunk_getinfo(const chkid_t *chkid, chkinfo_t *chkinfo)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        ret = ringlock_check(chkid, RINGLOCK_FRCTL, 0, &ent->token);
+        ret = ringlock_check(chkid, TYPE_FRCTL, 0, &ent->token);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         

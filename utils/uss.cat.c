@@ -85,10 +85,6 @@ int main(int argc, char *argv[])
                 exit(1);
         }
 
-        ret = part_init(PART_MDS | PART_FRCTL);
-        if (ret)
-                GOTO(err_ret, ret);
-        
         ret = ly_getattr(path, &stbuf);
         if (ret)
                 GOTO(err_ret, ret);

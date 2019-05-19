@@ -338,7 +338,7 @@ err_ret:
 static int __ringlock_check(int type, const coreid_t *coreid, const range_t *range)
 {
         int ret;
-        ringlock_srv_t *ringlock = (type == RINGLOCK_MDS)
+        ringlock_srv_t *ringlock = (type == TYPE_MDCTL)
                 ? __ringlock_mds__ : __ringlock_frctl__;
 
         if (coreid && range) {
@@ -370,7 +370,7 @@ int ringlock_srv_lock(const range_t *range, uint32_t type, const coreid_t *corei
 {
         int ret;
         ringlock_entry_t *ent;
-        ringlock_srv_t *ringlock = (type == RINGLOCK_MDS)
+        ringlock_srv_t *ringlock = (type == TYPE_MDCTL)
                 ? __ringlock_mds__ : __ringlock_frctl__;
 
         DINFO("%s "RANGE_FORMAT" lock @ %s\n", ringlock->name, RANGE_ARG(range),
@@ -425,7 +425,7 @@ int ringlock_srv_get(const range_t *range, uint32_t type, coreid_t *coreid, ltok
 {
         int ret;
         ringlock_entry_t *ent;
-        ringlock_srv_t *ringlock = (type == RINGLOCK_MDS)
+        ringlock_srv_t *ringlock = (type == TYPE_MDCTL)
                 ? __ringlock_mds__ : __ringlock_frctl__;
 
         DBUG(""RANGE_FORMAT" get\n", RANGE_ARG(range));
@@ -466,7 +466,7 @@ err_ret:
 int ringlock_srv_unlock(const range_t *range, uint32_t type, const coreid_t *coreid)
 {
         int ret;
-        ringlock_srv_t *ringlock = (type == RINGLOCK_MDS)
+        ringlock_srv_t *ringlock = (type == TYPE_MDCTL)
                 ? __ringlock_mds__ : __ringlock_frctl__;
         
         DBUG(""RANGE_FORMAT" free @ %s\n", RANGE_ARG(range),

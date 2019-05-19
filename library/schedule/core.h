@@ -76,10 +76,8 @@ typedef struct __core {
         struct list_head destroy_list;
 } core_t;
 
-#define CORE_FLAG_ACTIVE  0x0001
 #define CORE_FLAG_PASSIVE 0x0002
 #define CORE_FLAG_AIO     0x0004
-#define CORE_FLAG_REDIS   0x0008
 #define CORE_FLAG_PRIVATE 0x0010
 #define CORE_FLAG_POLLING 0x0020
 

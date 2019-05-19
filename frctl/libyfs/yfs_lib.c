@@ -31,7 +31,9 @@
 #include "diskid.h"
 #include "range.h"
 #include "maping.h"
+#include "diskmap.h"
 #include "mem_hugepage.h"
+#include "ringlock.h"
 #include "main_loop.h"
 #include "dbg.h"
 
@@ -381,7 +383,9 @@ static int __nodeid_init(const char *name)
                         GOTO(err_ret, ret);
         }
 
-        ng.local_nid.id = id;
+        nid_t nid;
+        nid.id = id;
+        net_setnid(&nid);
         
         return 0;
 err_ret:
@@ -516,7 +520,7 @@ err_ret:
         return ret;
 }
 
-int ly_init(int daemon, const char *name, int64_t maxopenfile)
+int __ly_init(int daemon, const char *name, int64_t maxopenfile)
 {
         int ret;
 
@@ -539,7 +543,6 @@ int ly_init(int daemon, const char *name, int64_t maxopenfile)
 
         _fence_test1_init(ng.home);
 
-        ng.live = 1;
         ng.uptime = time(NULL);
 
         ret = md_init();
@@ -722,11 +725,9 @@ int ly_init_simple2(const char *name)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = ly_init(0, name, -1);
+        ret = __ly_init(0, name, -1);
         if (ret)
                 GOTO(err_ret, ret);
-
-        ng.live = 0;
 
 #if 0
         ret = ly_license_init(name);
@@ -747,11 +748,9 @@ int ly_init_simple(const char *name)
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = ly_init(0, name, -1);
+        ret = __ly_init(0, name, -1);
         if (ret)
                 GOTO(err_ret, ret);
-
-        ng.live = 0;
 
 retry:
         ret = network_connect_mds(0);
@@ -770,7 +769,7 @@ err_ret:
         return ret;
 }
 
-int sdfs_init_verbose(const char *name, int polling_core)
+int sdfs_init_verbose(const char *name, int role, int flag, int mod, int polling_core)
 {
         int ret;
 
@@ -788,35 +787,51 @@ int sdfs_init_verbose(const char *name, int polling_core)
 
         _fence_test1_init(ng.home);
 
-        ng.live = 1;
         ng.uptime = time(NULL);
 
-        ret = md_init();
-        if (ret)
-                GOTO(err_ret, ret);
-
-        ret = cds_rpc_init();
-        if (ret)
-                GOTO(err_ret, ret);
-        
         main_loop_start();
 
         ret = io_analysis_init(name, -1);
         if (ret)
                 GOTO(err_ret, ret);
 
-        ret = core_init(polling_core, CORE_FLAG_PASSIVE | CORE_FLAG_ACTIVE
-                        | CORE_FLAG_PRIVATE);
+        ret = core_init(polling_core, flag);
         if (ret)
+                GOTO(err_ret, ret);
+
+        ret = part_init();
+        if (ret)
+                GOTO(err_ret, ret);
+
+        if (mod & MOD_MD) {
+                ret = md_init();
+                if (ret)
                         GOTO(err_ret, ret);
+        }
+        
+        if (mod & MOD_DISKMAP) {
+                ret = diskmap_init();
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
+        
+        if (mod & MOD_RANGE) {
+                ret = range_init();
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
 
-        ret = part_init(PART_MDS | PART_FRCTL);
-        if (ret)
-                GOTO(err_ret, ret);
+        if (mod & MOD_PART) {
+                ret = part_register(role);
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
 
-        ret = range_init();
-        if (ret)
-                GOTO(err_ret, ret);
+        if (mod & MOD_RINGLOCK) {
+                ret = ringlock_init(role);
+                if (ret)
+                        GOTO(err_ret, ret);
+        }
         
         return 0;
 err_ret:
@@ -831,7 +846,7 @@ int sdfs_init(const char *name)
         if(ret)
                 GOTO(err_ret, ret);
 
-        ret = sdfs_init_verbose(name, 1);
+        ret = sdfs_init_verbose(name, 0, 0, MOD_MD | MOD_DISKMAP, 1);
         if (ret)
                 GOTO(err_ret, ret);
  

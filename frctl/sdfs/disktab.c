@@ -149,7 +149,30 @@ err_ret:
 
 int disktab_online(const diskid_t *diskid)
 {
-        return bmap_get(&__disktab__->bmap, diskid->id);
+        int ret;
+
+        ret = bmap_get(&__disktab__->bmap, diskid->id);
+        if (ret) {
+                DINFO("disk %d online\n", diskid->id);
+                goto out;
+        }
+                
+        if (ng.daemon) {
+                DINFO("disk %d not online\n", diskid->id);
+                goto err_nodev;
+        }
+
+        disk_info_t stat;
+        ret = cds_rpc_stat(diskid, &stat);
+        if (ret) {
+                DINFO("disk %d not online\n", diskid->id);
+                goto err_nodev;
+        }
+
+out:
+        return 1;
+err_nodev:
+        return 0;
 }
 
 int disktab_init()

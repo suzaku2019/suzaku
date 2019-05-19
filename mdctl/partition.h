@@ -6,13 +6,15 @@ typedef struct {
         int64_t end;
 } range_t;
 
-#define PART_MDS     0x01
-#define PART_FRCTL   0x02
+#if 0
+#define TYPE_MDCTL     0x01
+#define TYPE_FRCTL   0x02
+#endif
 
 int part_hash(uint64_t id, int type, coreid_t *coreid);
 int part_dump(int type);
 int part_register(int type);
-int part_init(int type);
+int part_init();
 int part_range(int type, const coreid_t *coreid, range_t *range);
 int part_location(const chkid_t *chkid, int type, coreid_t *coreid);
 

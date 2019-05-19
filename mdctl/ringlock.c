@@ -216,7 +216,7 @@ static int __ringlock_update(ringlock_t *ringlock)
 
         YASSERT(ng.daemon);
 
-        int t = (ringlock->type == RINGLOCK_MDS) ? PART_MDS : PART_FRCTL;
+        int t = (ringlock->type == TYPE_MDCTL) ? TYPE_MDCTL : TYPE_FRCTL;
         ret = part_range(t, &ringlock->coreid, &range);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -272,7 +272,7 @@ int ringlock_check(const chkid_t *chkid, int rtype, int flag, ltoken_t *token)
 {
         int ret;
         coreid_t coreid;
-        int ptype = (rtype == RINGLOCK_MDS) ? PART_MDS : PART_FRCTL;
+        int ptype = (rtype == TYPE_MDCTL) ? TYPE_MDCTL : TYPE_FRCTL;
         
         ret = part_location(chkid, ptype, &coreid);
         if (unlikely(ret))

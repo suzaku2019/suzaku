@@ -160,8 +160,15 @@ typedef struct {
         int running;
 } sdfs_ctx_t;
 
+#define MOD_RANGE        0x00001
+#define MOD_PART         0x00002
+#define MOD_RINGLOCK     0x00004
+#define MOD_MD           0x00008
+#define MOD_DISKMAP      0x00010
+
+
 /* yfs_lib.c */
-int sdfs_init_verbose(const char *name, int polling_core);
+int sdfs_init_verbose(const char *name, int type, int flag, int mods, int polling_core);
 int sdfs_init(const char *name);
 int sdfs_connect(const char *vol, sdfs_ctx_t **ctx);
 void sdfs_disconnect(sdfs_ctx_t *ctx);

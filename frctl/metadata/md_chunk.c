@@ -153,8 +153,7 @@ static int __md_newrep(chkinfo_t *chkinfo, int repmin, int flag)
                 info = &_info[i];
                 info->diskid = *diskid;
 
-                ret = disk_connect(&diskid->id, NULL, 1, 1);
-                if (ret) {
+                if (unlikely(!disktab_online(&diskid->id))) {
                         DINFO("%s not online\n", netable_rname_nid(&diskid->id));
                         info->online = 0;
                 } else {

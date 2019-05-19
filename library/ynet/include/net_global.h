@@ -21,7 +21,6 @@ typedef struct {
         char home[MAX_PATH_LEN];
         uint32_t seq; /*local seq*/
         uint32_t port;
-        int live;
         uint32_t uptime;
         uint32_t xmitbuf;
         time_t info_time;

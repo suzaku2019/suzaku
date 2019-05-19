@@ -480,7 +480,7 @@ int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *vers
         nid_t nid = *net_getnid();
         uint64_t prev_version = version ? *version : 0;
 
-        ret = part_location(chkid, PART_MDS, &coreid);
+        ret = part_location(chkid, TYPE_MDCTL, &coreid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -584,7 +584,7 @@ int mds_rpc_paget(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *_version)
         
         YASSERT(chkid->type != ftype_file);
         
-        ret = part_location(chkid, PART_MDS, &coreid);
+        ret = part_location(chkid, TYPE_MDCTL, &coreid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -683,7 +683,7 @@ int mds_rpc_recovery(const chkid_t *chkid)
         YASSERT(chkid->type == ftype_file
                 || chkid->type == ftype_sub);
         
-        ret = part_location(chkid, PART_MDS, &coreid);
+        ret = part_location(chkid, TYPE_MDCTL, &coreid);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
