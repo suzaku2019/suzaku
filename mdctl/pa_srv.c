@@ -48,6 +48,7 @@ typedef struct {
 
 typedef struct {
         chkid_t tid;
+        uint32_t ref;
         plock_t plock;
         plock_t infolock;
         ltoken_t token;
@@ -190,6 +191,7 @@ static int __pa_srv_read(pa_entry_t *ent, char *_buf, int *buflen,
         record = (void *)tmp;
         if (record->magic != __MAGIC__) {
                 ret = ENODATA;
+                YASSERT(record->magic == 0);
                 GOTO(err_ret, ret);
         }
 
@@ -211,15 +213,16 @@ static int __pa_srv_set__(pa_entry_t *ent, const chkinfo_t *chkinfo,
         chkinfo_t *prev;
         record_t *record;
         const chkid_t *chkid = &chkinfo->chkid;
+        int idx = chkid->idx % PA_ITEM_COUNT;
 
         version = *_version;
-        prev = ent->array[chkid->idx % PA_ITEM_COUNT];
+        prev = ent->array[idx];
         if (prev == NULL) {
-                YASSERT(version == 0);
-        }
-        
-        if (version && version != ent->chunk_array[chkid->idx % PA_ITEM_COUNT]) {
+                YASSERT(version == (LLU)-1);
+        } else if (version != ent->chunk_array[idx]) {
                 ret = ESTALE;
+                DINFO("version %ju -> %ju\n", version,
+                      ent->chunk_array[idx]);
                 GOTO(err_ret, ret);
         }
 
@@ -233,12 +236,14 @@ static int __pa_srv_set__(pa_entry_t *ent, const chkinfo_t *chkinfo,
         if (ret)
                 GOTO(err_ret, ret);
 
+        ent->chunk_array[idx] = version;
+        
         if (prev == NULL) {
-                ret = ymalloc((void **)&prev, CHKINFO_SIZE(chkinfo->repnum));
+                ret = huge_malloc((void **)&prev, CHKINFO_SIZE(chkinfo->repnum));
                 if (ret)
                         UNIMPLEMENTED(__DUMP__);
 
-                ent->array[chkid->idx % PA_ITEM_COUNT] = prev;
+                ent->array[idx] = prev;
         }
 
         CHKINFO_CP(prev, chkinfo);
@@ -258,10 +263,6 @@ static int __pa_srv_set(pa_entry_t *ent, const chkinfo_t *chkinfo,
         ret = plock_wrlock(&ent->record_lock[chkid->idx % PA_LOCK]);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
-
-        ret = ringlock_check(chkid, TYPE_MDCTL, 0, &ent->token);
-        if (unlikely(ret))
-                GOTO(err_lock, ret);
 
         ret = __pa_srv_set__(ent, chkinfo, version);
         if (unlikely(ret))
@@ -283,10 +284,13 @@ static void __pa_srv_load_info(pa_entry_t *ent, const char *buf)
         for (int i = 0; i < PA_INFO_COUNT; i++) {
                 record = (void *)buf + (PA_INFO_SIZE * i);
                 if (record->magic == 0) {
-                        ent->info_array[i] = 0;
+                        ent->info_array[i] = -1;
                 } else {
+                        DINFO("load "CHKID_FORMAT"[%d]\n", CHKID_ARG(&ent->tid), i);
                         YASSERT(record->magic == __MAGIC__); 
-                        YASSERT(record->crc == crc32_sum(record->buf, record->size - sizeof(*record)));
+                        YASSERT(record->crc == crc32_sum(record->buf,
+                                                         record->size
+                                                         - sizeof(*record)));
                         ent->info_array[i] = record->version;
                 }
         }
@@ -321,7 +325,7 @@ static int __pa_srv_load_item__(buffer_t *_buf, pa_entry_t *ent)
                 YASSERT(record->crc == crc32_sum(record->buf, record->size - sizeof(*record)));
                 ent->chunk_array[i] = record->version;
 
-                ret = ymalloc((void **)&chkinfo, record->size);
+                ret = huge_malloc((void **)&chkinfo, record->size);
                 if (unlikely(ret))
                         UNIMPLEMENTED(__DUMP__);
 
@@ -360,7 +364,7 @@ err_ret:
         return ret;
 }
 
-static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo, uint64_t version)
+STATIC int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo, uint64_t version)
 {
         int ret;
         io_t io;
@@ -371,6 +375,10 @@ static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo, uint64_
         ret = plock_wrlock(&ent->plock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
+
+        if (ent->chunk) {
+                goto out;
+        }
         
         ret = chunk_open(&chunk, chkinfo, version, NULL, NULL, 0);
         if (unlikely(ret))
@@ -390,6 +398,8 @@ static int __pa_srv_load_item(pa_entry_t *ent, const chkinfo_t *chkinfo, uint64_
         mbuffer_free(&buf);
 
         ent->chunk = chunk;
+
+out:
         plock_unlock(&ent->plock);
         
         return 0;
@@ -403,6 +413,22 @@ err_ret:
         return ret;
 }
 
+static void __pa_srv_entry_free(pa_entry_t *ent)
+{
+        for (int i = 0; i < PA_ITEM_COUNT; i++) {
+                if (ent->array[i]) {
+                        huge_free((void **)&ent->array[i]);
+                }
+        }
+
+
+        if (ent->chunk) {
+                chunk_close(&ent->chunk);
+        }
+        
+        huge_free((void **)&ent);
+}
+
 static int __pa_srv_entry_create(const chkid_t *tid, pa_entry_t **_ent)
 {
         int ret;
@@ -413,7 +439,7 @@ static int __pa_srv_entry_create(const chkid_t *tid, pa_entry_t **_ent)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
-        ret = ymalloc((void **)&ent, sizeof(*ent));
+        ret = huge_malloc((void **)&ent, sizeof(*ent));
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -451,7 +477,8 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
         uint64_t version;
 
         DINFO("load "CHKID_FORMAT"\n", CHKID_ARG(tid));
-        
+
+retry:
         ret = md_chunk_load(tid, chkinfo, &version);
         if (unlikely(ret)) {
                 if (ret == ENOENT) {
@@ -459,7 +486,7 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
                         if (unlikely(ret))
                                 GOTO(err_ret, ret);
 
-                        version = 0;
+                        goto retry;
                 } else 
                         GOTO(err_ret, ret);
         }
@@ -478,6 +505,7 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
         
         plock_unlock(&pa_srv->plock);
 
+#if 0
         ret = plock_rdlock(&pa_srv->plock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -490,6 +518,7 @@ static int __pa_srv_load(pa_srv_t *pa_srv, const chkid_t *tid)
                 GOTO(err_lock, ret);
         
         plock_unlock(&pa_srv->plock);
+#endif
         
         return 0;
 err_free:
@@ -507,7 +536,90 @@ static pa_srv_t *__pa_srv(const chkid_t *tid)
         return &pa_srv[(tid->id * tid->idx) / PA_HASH];
 }
 
-static int __pa_srv_entry_get(pa_srv_t *pa_srv, const chkid_t *tid, pa_entry_t **_ent)
+STATIC int __pa_srv_check(pa_srv_t *pa_srv, const chkid_t *tid,
+                          pa_entry_t *ent)
+{
+        int ret;
+
+        (void) pa_srv;
+        
+        ret = plock_rdlock(&ent->plock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ret = ringlock_check(tid, TYPE_MDCTL, 0, &ent->token);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
+
+        plock_unlock(&ent->plock);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_ret:
+        return ret;
+}
+
+STATIC int __pa_srv_drop(pa_srv_t *pa_srv, const chkid_t *tid,
+                            pa_entry_t *ent)
+{
+        int ret;
+        pa_entry_t *tmp;
+
+        DINFO(CHKID_FORMAT" drop %p\n", CHKID_ARG(tid), ent);
+        
+        ret = plock_wrlock(&pa_srv->plock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        YASSERT(ent->ref == 0);
+
+        ret = htab_remove(pa_srv->htab, (void *)tid, (void **)&tmp);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
+
+        YASSERT(ent == tmp);
+        
+        __pa_srv_entry_free(ent);
+        
+        plock_unlock(&pa_srv->plock);
+
+        return 0;
+err_lock:
+        plock_unlock(&pa_srv->plock);
+err_ret:
+        return ret;
+}
+
+static void __pa_srv_deref(pa_srv_t *pa_srv, pa_entry_t *ent)
+{
+        (void) pa_srv;
+        YASSERT(ent->ref > 0);
+        ent->ref--;
+}
+
+STATIC int __pa_srv_load__(pa_entry_t *ent, const chkid_t *tid)
+{
+        int ret;
+        char _chkinfo[CHKINFO_MAX];
+        chkinfo_t *chkinfo = (void *)_chkinfo;
+        uint64_t version;
+
+        ret = md_chunk_load(tid, chkinfo, &version);
+        if (unlikely(ret)) {
+                GOTO(err_ret, ret);
+        }
+                
+        ret = __pa_srv_load_item(ent, chkinfo, version);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        return 0;
+err_ret:
+        return ret;
+}
+
+STATIC int __pa_srv_ref(pa_srv_t *pa_srv, const chkid_t *tid, pa_entry_t **_ent)
 {
         int ret;
         pa_entry_t *ent;
@@ -528,31 +640,35 @@ retry:
                 goto retry;
         }
 
-        if (ent->chunk == NULL) {
-                char _chkinfo[CHKINFO_MAX];
-                chkinfo_t *chkinfo = (void *)_chkinfo;
-                uint64_t version;
-
-                ret = md_chunk_load(tid, chkinfo, &version);
-                if (unlikely(ret)) {
-                        GOTO(err_ret, ret);
-                }
-                
-                ret = __pa_srv_load_item(ent, chkinfo, version);
+        ent->ref++;//single thread
+        plock_unlock(&pa_srv->plock);
+        
+        if (unlikely(ent->chunk == NULL)) {
+                ret = __pa_srv_load__(ent, tid);
                 if (unlikely(ret))
+                        GOTO(err_ref, ret);
+        }
+
+        ret = __pa_srv_check(pa_srv, tid, ent);
+        if (unlikely(ret)) {
+                __pa_srv_deref(pa_srv, ent);
+                if (ret == ESTALE) {
+                        ret = __pa_srv_drop(pa_srv, tid, ent);
+                        if (unlikely(ret))
+                                GOTO(err_ret, ret);
+
+                        goto retry;
+                } else
                         GOTO(err_ret, ret);
         }
         
         *_ent = ent;
 
         return 0;
+err_ref:
+        __pa_srv_deref(pa_srv, ent);
 err_ret:
         return ret;
-}
-
-static void __pa_srv_entry_release(pa_srv_t *pa_srv)
-{
-        plock_unlock(&pa_srv->plock);
 }
 
 int pa_srv_set(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version)
@@ -567,7 +683,7 @@ int pa_srv_set(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version
               CHKID_ARG(&tid), *version);
         
         pa_srv_t *pa_srv = __pa_srv(&tid);
-        ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
+        ret = __pa_srv_ref(pa_srv, &tid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -581,13 +697,13 @@ int pa_srv_set(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *version
         }
 
         plock_unlock(&ent->plock);
-        __pa_srv_entry_release(pa_srv);
+        __pa_srv_deref(pa_srv, ent);
         
         return 0;
 err_lock:
         plock_unlock(&ent->plock);
 err_release:
-        __pa_srv_entry_release(pa_srv);
+        __pa_srv_deref(pa_srv, ent);
 err_ret:
         return ret;
 }
@@ -624,10 +740,6 @@ static int __pa_srv_get(pa_entry_t *ent, const chkid_t *chkid,
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, TYPE_MDCTL, 0, &ent->token);
-        if (unlikely(ret))
-                GOTO(err_lock, ret);
-
         ret = __pa_srv_get__(ent, chkid, chkinfo, version);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
@@ -653,7 +765,7 @@ int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *version)
               CHKID_ARG(chkid), CHKID_ARG(&tid));
         
         pa_srv_t *pa_srv = __pa_srv(&tid);
-        ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
+        ret = __pa_srv_ref(pa_srv, &tid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -667,17 +779,16 @@ int pa_srv_get(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *version)
         }
 
         plock_unlock(&ent->plock);
+        __pa_srv_deref(pa_srv, ent);
 
         DINFO("get "CHKID_FORMAT" @ "CHKID_FORMAT" success\n",
               CHKID_ARG(chkid), CHKID_ARG(&tid));
-        
-        __pa_srv_entry_release(pa_srv);
         
         return 0;
 err_lock:
         plock_unlock(&ent->plock);
 err_release:
-        __pa_srv_entry_release(pa_srv);
+        __pa_srv_deref(pa_srv, ent);
 err_ret:
         return ret;
 }
@@ -688,10 +799,6 @@ static int __pa_srv_recovery(pa_entry_t *ent)
 
         DINFO("recovery "CHKID_FORMAT"\n", CHKID_ARG(&ent->tid));
         
-        ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
         ret = chunk_recovery(NULL, ent->chunk);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
@@ -714,7 +821,7 @@ int pa_srv_recovery(const chkid_t *chkid)
               CHKID_ARG(chkid), CHKID_ARG(&tid));
         
         pa_srv_t *pa_srv = __pa_srv(&tid);
-        ret = __pa_srv_entry_get(pa_srv, &tid, &ent);
+        ret = __pa_srv_ref(pa_srv, &tid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -728,16 +835,15 @@ int pa_srv_recovery(const chkid_t *chkid)
         }
 
         plock_unlock(&ent->plock);
+        __pa_srv_deref(pa_srv, ent);
 
         DINFO("recovery "CHKID_FORMAT" success\n", CHKID_ARG(chkid));
-        
-        __pa_srv_entry_release(pa_srv);
         
         return 0;
 err_lock:
         plock_unlock(&ent->plock);
 err_release:
-        __pa_srv_entry_release(pa_srv);
+        __pa_srv_deref(pa_srv, ent);
 err_ret:
         return ret;
 }
@@ -754,10 +860,6 @@ static int __pa_srv_setinfo(pa_entry_t *ent, int idx, const char *buf,
                 GOTO(err_ret, ret);
         }
 
-        ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-        
         ret = plock_wrlock(&ent->infolock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -765,6 +867,8 @@ static int __pa_srv_setinfo(pa_entry_t *ent, int idx, const char *buf,
         if ((ent->info_array[idx] != (uint64_t)-1 && prev_version != (uint64_t)-1)
             && (prev_version != ent->info_array[idx])) {
                 ret = EPERM;
+                DINFO(CHKID_FORMAT" idx %d version %ju -> %ju\n",
+                      CHKID_ARG(&ent->tid), idx, prev_version,  ent->info_array[idx]);
                 GOTO(err_lock, ret);
         }
         
@@ -797,7 +901,7 @@ int pa_srv_setinfo(const chkid_t *tid, int idx, const char *buf,
               CHKID_ARG(tid), idx, *version);
         
         pa_srv_t *pa_srv = __pa_srv(tid);
-        ret = __pa_srv_entry_get(pa_srv, tid, &ent);
+        ret = __pa_srv_ref(pa_srv, tid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -811,17 +915,16 @@ int pa_srv_setinfo(const chkid_t *tid, int idx, const char *buf,
         }
 
         plock_unlock(&ent->plock);
+        __pa_srv_deref(pa_srv, ent);
 
         DINFO("setinfo "CHKID_FORMAT" @ %u, version %ju success\n",
               CHKID_ARG(tid), idx, *version);
-        
-        __pa_srv_entry_release(pa_srv);
         
         return 0;
 err_lock:
         plock_unlock(&ent->plock);
 err_release:
-        __pa_srv_entry_release(pa_srv);
+        __pa_srv_deref(pa_srv, ent);
 err_ret:
         return ret;
 }
@@ -831,11 +934,7 @@ static int __pa_srv_getinfo(pa_entry_t *ent, int idx, char *buf,
 {
         int ret;
 
-        ret = ringlock_check(&ent->tid, TYPE_MDCTL, 0, &ent->token);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-        
-        ret = plock_wrlock(&ent->infolock);
+        ret = plock_rdlock(&ent->infolock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -868,7 +967,7 @@ int pa_srv_getinfo(const chkid_t *tid, int idx, char *buf, int *buflen,
         DINFO("getinfo "CHKID_FORMAT" @ %u\n", CHKID_ARG(tid), idx);
         
         pa_srv_t *pa_srv = __pa_srv(tid);
-        ret = __pa_srv_entry_get(pa_srv, tid, &ent);
+        ret = __pa_srv_ref(pa_srv, tid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -882,17 +981,16 @@ int pa_srv_getinfo(const chkid_t *tid, int idx, char *buf, int *buflen,
         }
 
         plock_unlock(&ent->plock);
+        __pa_srv_deref(pa_srv, ent);
 
         DINFO("getinfo "CHKID_FORMAT" @ %u, version %ju success\n",
               CHKID_ARG(tid), idx, *version);
-        
-        __pa_srv_entry_release(pa_srv);
         
         return 0;
 err_lock:
         plock_unlock(&ent->plock);
 err_release:
-        __pa_srv_entry_release(pa_srv);
+        __pa_srv_deref(pa_srv, ent);
 err_ret:
         return ret;
 }

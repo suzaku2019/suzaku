@@ -476,24 +476,6 @@ err_ret:
         return ret;
 }
 
-int disk_connect(const diskid_t *diskid, time_t *ltime, int timeout, int force)
-{
-        int ret;
-        nid_t nid;
-
-        ret = d2n_nid(diskid, &nid);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-        
-        ret = network_connect(&nid, ltime, timeout, force);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        return 0;
-err_ret:
-        return ret;
-}
-
 const char *disk_rname(const diskid_t *diskid)
 {
         int ret;

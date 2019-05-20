@@ -85,6 +85,7 @@ STATIC int __diskmap_node(const char *nodeinfo, diskmap_node_t **_diskmap_node)
         const char *pos = strchr(nodeinfo, ' ');
         if (pos == NULL) {
                 ret = EINVAL;
+                DWARN("nodeinfo %s\n", nodeinfo);
                 GOTO(err_ret, ret);
         }
         
@@ -649,6 +650,7 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
         diskid_t diskid;
         disk_info_t stat;
         diskid_t diskids[512];
+        char tmp[MAX_BUF_LEN];
 
         snprintf(key, MAX_NAME_LEN, "id/%s/node/%d/disk", pool, nid->id);
         ret = etcd_list1(ETCD_POOL, key, &array);
@@ -659,7 +661,6 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
                 goto out;
         }
         
-        snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d ", nid->id);
         count = 0;
         for (int i = 0; i < array->num_node; i++) {
                 etcd_node_t *node = array->nodes[i];
@@ -672,9 +673,10 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
         }
 
         qsort(diskids, count, sizeof(diskid_t), __diskid_cmp);
-        
+
+        tmp[0] = '\0';
         for (int i = 0; i < count; i++) {
-                ret = cds_rpc_stat(&diskids[i], &stat);
+                ret = cds_rpc_diskstat(&diskids[i], &stat);
                 if (ret) {
                         uint64_t poolid = atoll(pool);
                         diskmap_disk_unregister(poolid, nid, &diskid);
@@ -682,20 +684,23 @@ STATIC int __diskmap_disk_dump(const char *pool, const nid_t *nid, char *buf)
                 }
 
                 if (stat.capacity - stat.used < mdsconf.disk_keep) {
-                        snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d/0,", diskids[i].id);
+                        snprintf(tmp + strlen(tmp), MAX_NAME_LEN, "%d/0,", diskids[i].id);
                 } else {
-                        snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d/1,", diskids[i].id);
+                        snprintf(tmp + strlen(tmp), MAX_NAME_LEN, "%d/1,", diskids[i].id);
                 }
         }
 
-        buf[strlen(buf) - 1] = '\n';
-        
+        if (strlen(tmp)) {
+                tmp[strlen(tmp) - 1] = '\0';
+                snprintf(buf + strlen(buf), MAX_NAME_LEN, "%d %s\n", nid->id, tmp);
+        } else {
+                DWARN("all disk offline %s\n", network_rname(nid));
+        }
+
 out:
         free_etcd_node(array);
 
         return 0;
-//err_free:
-        //free_etcd_node(array);
 err_ret:
         return ret;
 }

@@ -38,8 +38,9 @@ typedef enum {
         CDS_WRITE,
         CDS_READ,
         CDS_CONNECT,
+        CDS_GETCLOCK,
         CDS_CREATE,
-        CDS_STAT,
+        CDS_DISKSTAT,
         CDS_MAX,
 } cds_op_t;
 
@@ -277,8 +278,7 @@ err_ret:
         return ret;
 }
 
-int cds_rpc_write(const diskid_t *diskid, const io_t *io,
-                  const buffer_t *_buf)
+int cds_rpc_write(const diskid_t *diskid, const io_t *io, const buffer_t *_buf)
 {
         int ret;
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
@@ -350,7 +350,7 @@ static int __cds_srv_connect(const sockid_t *sockid, const msgid_t *msgid, buffe
         uint32_t buflen;
         const ltoken_t *ltoken;
         const uint32_t *magic;
-        const int *force;
+        const int *resuse;
         clockstat_t clockstat;
         const nid_t *nid;
         const diskid_t *diskid;
@@ -367,10 +367,11 @@ static int __cds_srv_connect(const sockid_t *sockid, const msgid_t *msgid, buffe
                        &diskid, NULL,
                        &ltoken, NULL,
                        &magic, NULL,
-                       &force, NULL,
+                       &resuse, NULL,
                        NULL);
 
-        ret = disk_io_connect(diskid, &req->chkid, ltoken, *magic, &clockstat, *force);
+        ret = disk_io_connect(nid, diskid, &req->chkid, ltoken,
+                              *magic, &clockstat, *resuse);
         if (unlikely(ret)) {
                 GOTO(err_ret, ret);
         }
@@ -385,9 +386,8 @@ err_ret:
         return ret;
 }
 
-int cds_rpc_connect(const diskid_t *diskid,
-                    const chkid_t *chkid, const ltoken_t *ltoken,
-                    uint32_t magic, clockstat_t *clockstat, int force)
+int cds_rpc_connect(const diskid_t *diskid, const chkid_t *chkid, const ltoken_t *ltoken,
+                    uint32_t magic, clockstat_t *clockstat, int resuse)
 {
         int ret;
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
@@ -413,7 +413,7 @@ int cds_rpc_connect(const diskid_t *diskid,
                        diskid, sizeof(*diskid),
                        ltoken, sizeof(*ltoken),
                        &magic, sizeof(magic),
-                       &force, sizeof(force),
+                       &resuse, sizeof(resuse),
                        NULL);
 
         req->buflen = count;
@@ -527,7 +527,7 @@ err_ret:
         return ret;
 }
 
-static int __cds_srv_stat(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
+static int __cds_srv_diskstat(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
 {
         int ret;
         msg_t *req;
@@ -563,7 +563,7 @@ err_ret:
         return ret;
 }
 
-int cds_rpc_stat(const diskid_t *diskid, disk_info_t *stat)
+int cds_rpc_diskstat(const diskid_t *diskid, disk_info_t *stat)
 {
         int ret, replen = sizeof(*stat);
         char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
@@ -582,7 +582,7 @@ int cds_rpc_stat(const diskid_t *diskid, disk_info_t *stat)
         ANALYSIS_BEGIN(0);
 
         req = (void *)buf;
-        req->op = CDS_STAT;
+        req->op = CDS_DISKSTAT;
         _opaque_encode(&req->buf, &count,
                        net_getnid(), sizeof(nid_t),
                        diskid, sizeof(*diskid),
@@ -592,7 +592,7 @@ int cds_rpc_stat(const diskid_t *diskid, disk_info_t *stat)
 
         DBUG("stat %u\n", sizeof(*req) + count);
         
-        ret = rpc_request_wait("cds_rpc_stat", &nid,
+        ret = rpc_request_wait("cds_rpc_diskstat", &nid,
                                req, sizeof(*req) + count,
                                stat, &replen,
                                MSG_REPLICA, 0, _get_timeout());
@@ -632,7 +632,7 @@ static int __cds_srv_sync(const sockid_t *sockid, const msgid_t *msgid, buffer_t
                        &io, NULL,
                        NULL);
 
-        DBUG("sync chunk "CHKID_FORMAT", off %llu, len %u:%u\n",
+        DINFO("sync chunk "CHKID_FORMAT", off %llu, len %u:%u\n",
               CHKID_ARG(&req->chkid), (LLU)io->offset, io->size, _buf->len);
 
         YASSERT(_buf->len == io->size);
@@ -711,6 +711,97 @@ err_ret:
         return ret;
 }
 
+static int __cds_srv_getclock(const sockid_t *sockid, const msgid_t *msgid, buffer_t *_buf)
+{
+        int ret;
+        msg_t *req;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t buflen;
+        clockstat_t clockstat;
+        const nid_t *nid;
+        const diskid_t *diskid;
+
+        req = (void *)buf;
+        mbuffer_get(_buf, req, sizeof(*req));
+        buflen = req->buflen;
+        ret = mbuffer_popmsg(_buf, req, buflen + sizeof(*req));
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        _opaque_decode(req->buf, buflen,
+                       &nid, NULL,
+                       &diskid, NULL,
+                       NULL);
+
+        ret = disk_io_getclock(diskid, &req->chkid, &clockstat);
+        if (unlikely(ret)) {
+                GOTO(err_ret, ret);
+        }
+
+        corerpc_reply(sockid, msgid, &clockstat, sizeof(clockstat));
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+int cds_rpc_getclock(const diskid_t *diskid, const chkid_t *chkid, clockstat_t *clockstat)
+{
+        int ret;
+        char *buf = mem_cache_calloc1(MEM_CACHE_4K, PAGE_SIZE);
+        uint32_t count;
+        msg_t *req;
+        nid_t nid;        
+
+        ret = d2n_nid(diskid, &nid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ret = network_connect(&nid, NULL, 1, 0);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ANALYSIS_BEGIN(0);
+
+        req = (void *)buf;
+        req->op = CDS_GETCLOCK;
+        req->chkid = *chkid;
+        _opaque_encode(&req->buf, &count,
+                       net_getnid(), sizeof(nid_t),
+                       diskid, sizeof(*diskid),
+                       NULL);
+
+        req->buflen = count;
+
+        coreid_t coreid;
+        ret = chkid2coreid(chkid, &nid, &coreid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        
+        buffer_t _buf;
+        mbuffer_init(&_buf, 0);
+        ret = corerpc_postwait("cds_rpc_read", &coreid,
+                               req, sizeof(*req) + count, NULL,
+                               &_buf, MSG_REPLICA, 0, _get_timeout());
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        mbuffer_popmsg(&_buf, clockstat, _buf.len);
+        ANALYSIS_QUEUE(0, IO_WARN, NULL);
+
+        mem_cache_free(MEM_CACHE_4K, buf);
+
+        return 0;
+err_ret:
+        mem_cache_free(MEM_CACHE_4K, buf);
+        return ret;
+}
+
+
 int cds_rpc_init()
 {
         DINFO("replica rpc init\n");
@@ -719,8 +810,9 @@ int cds_rpc_init()
         __request_set_handler(CDS_WRITE, __cds_srv_write, "cds_srv_write");
         __request_set_handler(CDS_SYNC, __cds_srv_sync, "cds_srv_sync");
         __request_set_handler(CDS_CONNECT, __cds_srv_connect, "cds_srv_connect");
+        __request_set_handler(CDS_GETCLOCK, __cds_srv_getclock, "cds_srv_getclock");
         __request_set_handler(CDS_CREATE, __cds_srv_create, "cds_srv_create");
-        __request_set_handler(CDS_STAT, __cds_srv_stat, "cds_srv_stat");
+        __request_set_handler(CDS_DISKSTAT, __cds_srv_diskstat, "cds_srv_diskstat");
         
         if (ng.daemon) {
                 rpc_request_register(MSG_REPLICA, __request_handler, NULL);

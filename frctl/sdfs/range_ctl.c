@@ -40,6 +40,7 @@ typedef struct {
 
 typedef struct {
         chkid_t id;
+        uint32_t ref;
         plock_t plock;
         ec_t ec;
         ltoken_t token;
@@ -381,8 +382,68 @@ err_ret:
         return ret;
 }
 
-STATIC int __range_ctl_entry(range_ctl_t *range_ctl, const chkid_t *tid,
-                                 range_entry_t **_ent)
+STATIC int __range_ctl_check(range_ctl_t *range_ctl, const chkid_t *tid,
+                             range_entry_t *ent)
+{
+        int ret;
+
+        (void) range_ctl;
+        
+        ret = plock_rdlock(&ent->plock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+        
+        ret = ringlock_check(tid, TYPE_FRCTL, 0, &ent->token);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
+
+        plock_unlock(&ent->plock);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_ret:
+        return ret;
+}
+
+STATIC int __range_ctl_drop(range_ctl_t *range_ctl, const chkid_t *tid,
+                            range_entry_t *ent)
+{
+        int ret;
+        range_entry_t *tmp;
+
+        ret = plock_wrlock(&range_ctl->plock);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        YASSERT(ent->ref == 0);
+
+        ret = htab_remove(range_ctl->htab, (void *)tid, (void **)&tmp);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
+
+        YASSERT(ent == tmp);
+        
+        __range_ctl_entry_free(&ent);
+        
+        plock_unlock(&range_ctl->plock);
+
+        return 0;
+err_lock:
+        plock_unlock(&range_ctl->plock);
+err_ret:
+        return ret;
+}
+
+STATIC void __range_ctl_deref(range_ctl_t *range_ctl, range_entry_t *ent)
+{
+        (void) range_ctl;
+        YASSERT(ent->ref > 0);
+        ent->ref--;
+}
+
+STATIC int __range_ctl_ref(range_ctl_t *range_ctl, const chkid_t *tid,
+                             range_entry_t **_ent)
 {
         int ret;
         range_entry_t *ent;
@@ -403,7 +464,21 @@ retry:
                 goto retry;
         }
 
+        ent->ref++;//single thread
         plock_unlock(&range_ctl->plock);
+
+        ret = __range_ctl_check(range_ctl, tid, ent);
+        if (unlikely(ret)) {
+                __range_ctl_deref(range_ctl, ent);
+                if (ret == ESTALE) {
+                        ret = __range_ctl_drop(range_ctl, tid, ent);
+                        if (unlikely(ret))
+                                GOTO(err_ret, ret);
+
+                        goto retry;
+                } else
+                        GOTO(err_ret, ret);
+        }
 
         *_ent = ent;
 
@@ -444,6 +519,7 @@ STATIC int __range_ctl_chunk_load(const chkid_t *chkid, const ec_t *ec,
         uint64_t version;
 
         chkinfo = (void *)_chkinfo;
+retry:
         ret = md_chunk_load(chkid, chkinfo, &version);
         if (unlikely(ret)) {
                 if (ret == ENOENT) {
@@ -451,6 +527,8 @@ STATIC int __range_ctl_chunk_load(const chkid_t *chkid, const ec_t *ec,
                                 ret = __range_ctl_chunk_create__(chkid, chkinfo);
                                 if (unlikely(ret))
                                         GOTO(err_ret, ret);
+
+                                goto retry;
                         } else {
                                 chkinfo = NULL;
                                 version = 0;
@@ -560,20 +638,27 @@ int range_ctl_get_token(const chkid_t *chkid, int op, io_token_t *token)
 
         cid2rid(chkid, &rangeid);
 
-        ret = __range_ctl_entry(range_ctl, &rangeid, &ent);
+        ret = __range_ctl_ref(range_ctl, &rangeid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, TYPE_FRCTL, 0, &ent->token);
+        ret = plock_rdlock(&ent->plock);
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                GOTO(err_ref, ret);
         
         ret = __range_ctl_get_token(ent, chkid, op, token,
                                     op == OP_WRITE ? O_CREAT : 0);
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                GOTO(err_lock, ret);
 
+        plock_unlock(&ent->plock);
+        __range_ctl_deref(range_ctl, ent);
+        
         return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_ref:
+        __range_ctl_deref(range_ctl, ent);
 err_ret:
         return ret;
 }
@@ -626,77 +711,26 @@ int range_ctl_chunk_recovery(const chkid_t *chkid)
         YASSERT(chkid->type == ftype_raw);
         cid2rid(chkid, &rangeid);
 
-        ret = __range_ctl_entry(range_ctl, &rangeid, &ent);
+        ret = __range_ctl_ref(range_ctl, &rangeid, &ent);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        ret = ringlock_check(chkid, TYPE_FRCTL, 0, &ent->token);
+        ret = plock_rdlock(&ent->plock);
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                GOTO(err_ref, ret);
         
         ret = __range_ctl_chunk_recovery(ent, chkid);
         if (unlikely(ret))
-                GOTO(err_ret, ret);
+                GOTO(err_lock, ret);
 
-        return 0;
-err_ret:
-        return ret;
-}
-
-#if 0
-STATIC int __range_ctl_chunk_getinfo(range_entry_t *ent, const chkid_t *chkid,
-                                     chkinfo_t *chkinfo)
-{
-        int ret, idx;
-        chunk_t *chunk;
-
-        idx = chkid->idx % RANGE_ITEM_COUNT;
-        ret = __range_ctl_rec_wrlock(ent, chkid);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        if (unlikely(ent->chunk[idx] == NULL)) {
-                ret = __range_ctl_chunk_load(chkid, &ent->ec,
-                                             &ent->chunk[idx], 0);
-                if (unlikely(ret))
-                        GOTO(err_lock, ret);
-        }
-
-        chunk = ent->chunk[idx];
-        CHKINFO_CP(chkinfo, chunk->chkinfo);
+        plock_unlock(&ent->plock);
+        __range_ctl_deref(range_ctl, ent);
         
-        __range_ctl_rec_unlock(ent, chkid);
-
         return 0;
 err_lock:
-        __range_ctl_rec_unlock(ent, chkid);
+        plock_unlock(&ent->plock);
+err_ref:
+        __range_ctl_deref(range_ctl, ent);
 err_ret:
         return ret;
 }
-
-int range_ctl_chunk_getinfo(const chkid_t *chkid, chkinfo_t *chkinfo)
-{
-        int ret;
-        range_ctl_t *range_ctl = variable_get(VARIABLE_RANGE_SRV);
-        chkid_t rangeid;
-        range_entry_t *ent;
-
-        cid2rid(chkid, &rangeid);
-
-        ret = __range_ctl_entry(range_ctl, &rangeid, &ent);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-        
-        ret = ringlock_check(chkid, TYPE_FRCTL, 0, &ent->token);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-        
-        ret = __range_ctl_chunk_getinfo(ent, chkid, chkinfo);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-
-        return 0;
-err_ret:
-        return ret;
-}
-#endif

@@ -19,20 +19,27 @@
 #include "sdfs_chunk.h"
 #include "network.h"
 #include "diskmap.h"
+#include "chunk.h"
 #include "cds_rpc.h"
 #include "main_loop.h"
 #include "md_proto.h"
 #include "dbg.h"
 
-static int __sdfs_chunk_pull(const nid_t *nid, const chkid_t *chkid, int *_fd, int chksize)
+static int __sdfs_chunk_pull(const diskid_t *diskid, const chkid_t *chkid,
+                             vclock_t *vclock, int *_fd, int chksize)
 {
         int ret, fd;
         io_t io;
         buffer_t buf;
         int offset;
         char path[MAX_PATH_LEN];
+        clockstat_t clockstat;
 
-        DINFO("pull chunk "OBJID_FORMAT"\n", OBJID_ARG(chkid));
+        ret = cds_rpc_getclock(diskid, chkid, &clockstat);
+        if (ret)
+                GOTO(err_ret, ret);
+
+        *vclock = clockstat.vclock;
         sprintf(path, "/dev/shm/sdfs/l-XXXXXX");
 
         fd = mkstemp(path);
@@ -41,13 +48,16 @@ static int __sdfs_chunk_pull(const nid_t *nid, const chkid_t *chkid, int *_fd, i
                 GOTO(err_ret, ret);
         }
 
+        DINFO("pull chunk "CHKID_FORMAT" from %s, clock (%ju, %ju) %s\n",
+              CHKID_ARG(chkid), disk_rname(diskid), vclock->vfm, vclock->clock, path);
+        
         unlink(path);
         
-        mbuffer_init(&buf, 0);
         offset = 0;
         while (offset < chksize) {
-                io_init(&io, chkid, Y_BLOCK_MAX, offset, 0);
-                ret = cds_rpc_read(nid, &io, &buf);
+                mbuffer_init(&buf, 0);
+                io_init(&io, chkid, Y_BLOCK_MAX, offset, IO_FLAG_FORCE);
+                ret = cds_rpc_read(diskid, &io, &buf);
                 if (ret) {
                         if (ret == ENOENT) {
                                 DWARN("pull chunk "OBJID_FORMAT" ENOENT\n", OBJID_ARG(chkid));
@@ -58,18 +68,13 @@ static int __sdfs_chunk_pull(const nid_t *nid, const chkid_t *chkid, int *_fd, i
                         }
                 }
 
-                offset += buf.len;
-                //YASSERT(offset > 0 && offset <= chksize);
-
-                ret = mbuffer_writefile(&buf, fd, buf.len);
+                ret = mbuffer_writefile(&buf, fd, offset);
                 if (ret)
                         GOTO(err_fd, ret);
 
-                mbuffer_free(&buf);
+                offset += buf.len;
 
-                if (buf.len < Y_BLOCK_MAX) {
-                        break;
-                }
+                mbuffer_free(&buf);
         }
 
         DINFO("pull chunk "OBJID_FORMAT" success, size %u\n", OBJID_ARG(chkid), offset);
@@ -82,18 +87,19 @@ err_ret:
         return ret;
 }
 
-static int __sdfs_chunk_push(const nid_t *nid, const chkid_t *chkid, int fd, int count)
+static int __sdfs_chunk_push(const diskid_t *diskid, const chkid_t *chkid,
+                             const vclock_t *vclock, int fd, int count)
 {
         int ret, offset, size, left;
         void *_buf;
         buffer_t buf;
         io_t io;
 
-        ret = cds_rpc_create(nid, chkid, count, 0);
+        ret = cds_rpc_create(diskid, chkid, count, 0);
         if (ret) {
                 if (ret == EEXIST) {
                         DWARN(CHKID_FORMAT" @ %s already exist\n",
-                              CHKID_ARG(chkid), disk_rname(nid));
+                              CHKID_ARG(chkid), disk_rname(diskid));
                 } else 
                         GOTO(err_ret, ret);
         }
@@ -119,7 +125,8 @@ static int __sdfs_chunk_push(const nid_t *nid, const chkid_t *chkid, int fd, int
                         GOTO(err_free, ret);
 
                 io_init(&io, chkid, size, offset, 0);
-                ret = cds_rpc_sync(nid, &io, &buf);
+                io.vclock = *vclock;
+                ret = cds_rpc_sync(diskid, &io, &buf);
                 if (ret)
                         GOTO(err_free1, ret);
 
@@ -140,13 +147,17 @@ err_ret:
         return ret;
 }
 
-int chunk_recovery_sync(const chkinfo_t *chkinfo)
+int chunk_recovery_sync(const vfm_t *vfm, const chkinfo_t *chkinfo)
 {
         int ret, fd = -1, i;
         int dist_count = 0, src_count = 0;
-        nid_t dist[YFS_CHK_REP_MAX], src[YFS_CHK_REP_MAX];
+        diskid_t dist[YFS_CHK_REP_MAX], src[YFS_CHK_REP_MAX];
         const reploc_t *reploc;
 
+        (void) vfm;
+        UNIMPLEMENTED(__WARN__);
+        
+        YASSERT(chkinfo->size == SDFS_CHUNK_SPLIT);
         for (i = 0; i < (int)chkinfo->repnum; i++) {
                 reploc = &chkinfo->diskid[i];
 
@@ -167,8 +178,9 @@ int chunk_recovery_sync(const chkinfo_t *chkinfo)
 
         YASSERT((int)chkinfo->repnum == dist_count + src_count);
 
+        vclock_t vclock;
         for (i = 0; i < src_count; i++) {
-                ret = __sdfs_chunk_pull(&src[i], &chkinfo->chkid, &fd, chkinfo->size);
+                ret = __sdfs_chunk_pull(&src[i], &chkinfo->chkid, &vclock, &fd, chkinfo->size);
                 if (ret)
                         continue;
 
@@ -181,7 +193,7 @@ int chunk_recovery_sync(const chkinfo_t *chkinfo)
         }
 
         for (i = 0; i < dist_count; i++) {
-                ret = __sdfs_chunk_push(&dist[i], &chkinfo->chkid, fd, chkinfo->size);
+                ret = __sdfs_chunk_push(&dist[i], &chkinfo->chkid, &vclock, fd, chkinfo->size);
                 if (ret)
                         GOTO(err_fd, ret);
         }

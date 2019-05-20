@@ -1247,8 +1247,9 @@ void netable_sort(diskid_t *nids, int count)
                 sec = &section[i];
                 sec->diskid = nids[i];
                 ret = d2n_nid(&sec->diskid, &sec->nid);
-                if (unlikely(ret))
+                if (unlikely(ret)) {
                         UNIMPLEMENTED(__DUMP__);
+                }
 
                 if (net_islocal(&sec->nid)) {
                         sec->load = core_latency_get();

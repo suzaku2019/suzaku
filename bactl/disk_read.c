@@ -51,6 +51,10 @@ static int IO_FUNC __disk_pre_read(entry_t *ent, const io_t *io)
 {
         int ret;
 
+        if (io->flags & IO_FLAG_FORCE) {
+                goto out;
+        }
+        
         if (unlikely(ent->sessid != io->sessid)) {
                 DWARN("chunk "CHKID_FORMAT", sessid %x:%x\n",
                       CHKID_ARG(&ent->chkid), ent->sessid, io->sessid);
@@ -76,6 +80,7 @@ retry:
         
         sy_spin_unlock(&ent->spin);
 
+out:
         return 0;
 err_ret:
         return ret;
@@ -85,6 +90,10 @@ static int IO_FUNC __disk_post_read(entry_t *ent, const io_t *io)
 {
         int ret;
 
+        if (io->flags & IO_FLAG_FORCE) {
+                goto out;
+        }
+        
         ret = sy_spin_lock(&ent->spin);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
@@ -96,6 +105,7 @@ static int IO_FUNC __disk_post_read(entry_t *ent, const io_t *io)
         
         sy_spin_unlock(&ent->spin);
 
+out:
         return 0;
 err_lock:
         sy_spin_unlock(&ent->spin);

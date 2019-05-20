@@ -90,6 +90,7 @@ int chunk_replica_write(const io_token_t *token, io_t *io)
                 ctx->task = &task;
                 ctx->sub_task = &sub_task;
                 ctx->io = *io;
+                ctx->io.sessid = token->repsess[i].sessid;
                 schedule_task_new("replica_write", __chunk_replica_write__, ctx, -1);
         }
 
@@ -134,14 +135,22 @@ int chunk_replica_read(const io_token_t *token, io_t *io)
                 repnum++;
         }
 
-        if (repnum == 0) {
+        if (unlikely(repnum == 0)) {
                 ret = ENONET;
                 GOTO(err_ret, ret);
         }
         
         netable_sort(array, repnum);
-        
         for (i = 0; i < repnum; i++) {
+                uint32_t sessid = -1;
+                for (int j = 0; j < repnum; j++) {
+                        if (nid_cmp(&array[i], &token->repsess[j].diskid) == 0) {
+                                sessid = token->repsess[j].sessid;
+                        }
+                }
+
+                YASSERT(sessid != (uint32_t)-1 && sessid != 0);
+                io->sessid = sessid;
                 ret = cds_rpc_read(&array[i], io, io->buf);
                 if (unlikely(ret)) {
                         GOTO(err_ret, ret);
@@ -150,7 +159,7 @@ int chunk_replica_read(const io_token_t *token, io_t *io)
                 break;
         }
 
-        if (i == repnum) {
+        if (unlikely(i == repnum)) {
                 ret = ENONET;
                 GOTO(err_ret, ret);
         }
@@ -165,7 +174,7 @@ err_ret:
         return ret;
 }
 
-int chunk_replica_recovery(chunk_t *chunk)
+int chunk_replica_recovery(const vfm_t *vfm, chunk_t *chunk)
 {
         int ret, repmin, i;
         fileid_t fileid;
@@ -182,13 +191,15 @@ int chunk_replica_recovery(chunk_t *chunk)
         cid2fid(&fileid, chkid);
 
         repmin = (ec->plugin != PLUGIN_NULL) ? ec->k : 1;
+        CHKINFO_CP(chkinfo, chunk->chkinfo);
+        YASSERT(chunk->chkinfo->size == SDFS_CHUNK_SPLIT);
         ret = md_chunk_newdisk(chkid, chkinfo, repmin, NEWREP_NORMAL);
         if (ret) {
                 GOTO(err_ret, ret);
         }
 
         if (ec->plugin == PLUGIN_NULL) {
-                ret = chunk_recovery_sync(chkinfo);
+                ret = chunk_recovery_sync(vfm, chkinfo);
                 if (ret)
                         GOTO(err_ret, ret);
         } else {

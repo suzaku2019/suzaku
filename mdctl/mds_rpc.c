@@ -480,7 +480,7 @@ int mds_rpc_paset(const chkid_t *chkid, const chkinfo_t *chkinfo, uint64_t *vers
         msg_t *req;
         coreid_t coreid;
         nid_t nid = *net_getnid();
-        uint64_t prev_version = version ? *version : 0;
+        uint64_t prev_version = version ? *version : (LLU)-1;
 
         ret = part_location(chkid, TYPE_MDCTL, &coreid);
         if (unlikely(ret))

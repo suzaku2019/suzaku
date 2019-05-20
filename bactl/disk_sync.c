@@ -57,13 +57,20 @@ static int IO_FUNC __disk_pre_sync(entry_t *ent, const io_t *io)
 {
         int ret;
 
+#if 0
         if (unlikely(ent->sessid != io->sessid)) {
                 DWARN("chunk "CHKID_FORMAT", sessid %x:%x\n",
                       CHKID_ARG(&ent->chkid), ent->sessid, io->sessid);
                 ret = ESTALE;
                 GOTO(err_ret, ret);
         }
+#endif
 
+        if (ent->writing) {
+                ret = EBUSY;
+                GOTO(err_ret, ret);
+        }
+        
         ret = sy_spin_lock(&ent->spin);
         if (unlikely(ret))
                 GOTO(err_ret, ret);

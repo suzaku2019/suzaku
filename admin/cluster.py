@@ -959,6 +959,17 @@ class Cluster(object):
         cmd = "python2 %s delconf -g %s" % (self.config.uss_vip, group)
         self._exec_cmd_on_cluster_nodes(cmd)
 
+    def logclean(self):
+        def _warp(h):
+            cmd = "python2 %s logclean" % (self.config.uss_node)
+            x, y = exec_remote(h, cmd)
+            print "logclean host: %s \n%s" % (h, x)
+            if y:
+                print y
+
+        args = [[x] for x in self.config.cluster.keys()]
+        mutil_exec(_warp, args)
+
 def handle(cluster, args):
     if args.option == 'sshkey':
         password = raw_input("input password:")
@@ -1045,6 +1056,7 @@ if __name__ == "__main__":
     parser_addnode.add_argument("--hosts", required=True, help="host1,host2,...")
     parser_addnode.set_defaults(func=_addnode)
 
+    """
     #ucarp operation
     def _ucarp_conf(args, cluster):
         groups = args.hosts.split(";")
@@ -1187,7 +1199,13 @@ if __name__ == "__main__":
     parser_dnsdel = subparsers.add_parser('dnsdel', help='del domain name')
     parser_dnsdel.add_argument("--name", required=True, help="domain name")
     parser_dnsdel.set_defaults(func=_dns_del)
+    """
 
+    def _logclean(args, cluster):
+        cluster.logclean()
+    parser_logclean = subparsers.add_parser('logclean', help='logclean services')
+    parser_logclean.set_defaults(func=_logclean)
+    
     #main func
     if (len(sys.argv) == 1):
         parser.print_help()

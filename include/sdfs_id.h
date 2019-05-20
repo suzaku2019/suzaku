@@ -433,6 +433,8 @@ static inline void nid2str(char *str, const nid_t *nid)
         snprintf(str, MAX_NAME_LEN, "%u", nid->id);
 }
 
+#define IO_FLAG_FORCE 0x0001
+
 static inline void io_init(io_t *io, const chkid_t *chkid,
                            uint32_t size, uint64_t offset, uint32_t flags)
 {

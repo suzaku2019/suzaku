@@ -517,11 +517,12 @@ err_ret:
         return ret;
 }
 
-int etcd_update_text(const char *prefix, const char *_key, const char *_value, const int *idx, int ttl)
+int etcd_update_text(const char *prefix, const char *_key, const char *_value,
+                     int *idx, int ttl)
 {
         int ret;
         etcd_prevcond_t precond;
-        char key[MAX_PATH_LEN], value[MAX_PATH_LEN], tmp[MAX_NAME_LEN];
+        char key[MAX_PATH_LEN], value[MAX_PATH_LEN], tmp[MAX_BUF_LEN];
 
         YASSERT(strcmp(_value, ""));
 
@@ -542,13 +543,21 @@ int etcd_update_text(const char *prefix, const char *_key, const char *_value, c
                 GOTO(err_ret, ret);
         }
 
+        if (idx) {
+                ret = etcd_get_text(prefix, _key, tmp, idx);
+                if (ret)
+                        GOTO(err_ret, ret);
+
+                YASSERT(strcmp(_value, tmp) == 0);
+        }
+        
         return 0;
 err_ret:
         return ret;
 }
 
 int etcd_update(const char *prefix, const char *_key, const void *_value, int valuelen,
-                const int *idx, int ttl)
+                int *idx, int ttl)
 {
         int ret;
         char buf[MAX_BUF_LEN];

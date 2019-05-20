@@ -61,12 +61,12 @@ int etcd_del_dir(const char *prefix, const char *_key, int recursive);
 
 int etcd_create_text(const char *prefix, const char *_key, const char *_value, int ttl);
 int etcd_get_text (const char *prefix, const char *_key, char *value, int *idx);
-int etcd_update_text(const char *prefix, const char *_key, const char *_value, const int  *idx, int ttl);
+int etcd_update_text(const char *prefix, const char *_key, const char *_value, int  *idx, int ttl);
 
 int etcd_create(const char *prefix, const char *_key, const void *_value, int valuelen, int ttl);
 int etcd_get_bin(const char *prefix, const char *_key, void *_value, int *_valuelen, int *idx);
 int etcd_update(const char *prefix, const char *_key, const void *_value, int valuelen,
-                const int *idx, int ttl);
+                int *idx, int ttl);
 
 int etcd_lock_init(etcd_lock_t *lock, const char *prefix, const char *key, int ttl, uint32_t magic, int update);
 int etcd_lock(etcd_lock_t *lock);

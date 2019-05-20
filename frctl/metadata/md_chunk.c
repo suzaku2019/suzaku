@@ -296,6 +296,8 @@ static void __chkinfo_init(chkinfo_t *chkinfo, const chkid_t *chkid,
         chkinfo->md_version = 0;
         chkinfo->size = md->split;
 
+        YASSERT(md->split == SDFS_CHUNK_SPLIT);
+        
         for (int i = 0; i < (int)chkinfo->repnum; i++) {
                 chkinfo->diskid[i].id = disks[i];
                 chkinfo->diskid[i].status = 0;
@@ -330,6 +332,7 @@ int md_chunk_create(const fileinfo_t *md, const chkid_t *chkid, chkinfo_t *chkin
                 }
         }
         
+        YASSERT(chkinfo->size == SDFS_CHUNK_SPLIT);
         ret = chunkop->create(chkinfo);
         if (ret)
                 GOTO(err_ret, ret);
@@ -350,6 +353,8 @@ int md_chunk_load(const chkid_t *chkid, chkinfo_t *chkinfo, uint64_t *version)
         if (ret)
                 GOTO(err_ret, ret);
 
+        YASSERT(chkinfo->size == SDFS_CHUNK_SPLIT);
+
         return 0;
 err_ret:
         return ret;
@@ -359,9 +364,7 @@ int md_chunk_newdisk(const chkid_t *chkid, chkinfo_t *chkinfo, int repmin, int f
 {
         int ret;
 
-        ret = md_chunk_load(chkid, chkinfo, NULL);
-        if (ret)
-                GOTO(err_ret, ret);
+        (void) chkid;
         
         ret = __md_newrep(chkinfo, repmin, flag);
         if (ret) {
@@ -380,12 +383,7 @@ int md_chunk_update(const chkinfo_t *chkinfo, uint64_t *version)
 {
         int ret;
 
-#if 0
-        for (int i = 0; i < (int)chkinfo->repnum; i++) {
-                YASSERT(chkinfo->diskid[i].status == 0);
-        }
-#endif
-
+        YASSERT(chkinfo->size == SDFS_CHUNK_SPLIT);
         ret = chunkop->update(chkinfo, version);
         if (ret)
                 GOTO(err_ret, ret);

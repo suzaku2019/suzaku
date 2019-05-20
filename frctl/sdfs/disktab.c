@@ -163,7 +163,7 @@ int disktab_online(const diskid_t *diskid)
         }
 
         disk_info_t stat;
-        ret = cds_rpc_stat(diskid, &stat);
+        ret = cds_rpc_diskstat(diskid, &stat);
         if (ret) {
                 DINFO("disk %d not online\n", diskid->id);
                 goto err_nodev;

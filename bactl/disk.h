@@ -28,6 +28,7 @@ typedef struct {
 
 typedef struct {
         chkid_t chkid;
+        nid_t owner;
         plock_t plock;
         sy_spinlock_t spin;
         vclock_t vclock;
@@ -116,13 +117,14 @@ int disk_io_read(const diskid_t *diskid, const io_t *io, buffer_t *buf);
 int disk_io_write(const diskid_t *diskid, const io_t *io, const buffer_t *buf);
 int disk_io_create(const diskid_t *diskid, const chkid_t *chkid, uint32_t size,
                    int initzero);
-int disk_io_connect(const diskid_t *diskid, const chkid_t *chkid,
+int disk_io_connect(const nid_t *nid, const diskid_t *diskid, const chkid_t *chkid,
                     const ltoken_t *ltoken, uint32_t sessid,
-                    clockstat_t *clockstat, int force);
+                    clockstat_t *clockstat, int resuse);
+int disk_io_getclock(const diskid_t *diskid, const chkid_t *chkid,
+                     clockstat_t *clockstat);
 
 int disk_init(const char *home);
 int disk_statvfs(const char *home, struct statvfs *_stbuf);
-int disk_connect(const diskid_t *diskid, time_t *ltime, int timeout, int force);
 const char *disk_rname(const diskid_t *diskid);
 
 /*disk_fs.c*/

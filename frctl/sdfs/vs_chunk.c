@@ -149,7 +149,7 @@ int vs_chunk_read(vs_range_t *range, const chkid_t *chkid, buffer_t *buf,
         ret = range->read(token, &io);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
-        
+
         ANALYSIS_QUEUE(0, IO_WARN, NULL);
 
         return 0;

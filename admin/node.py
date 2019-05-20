@@ -1379,6 +1379,15 @@ class Node:
         #os.system(cmd)
         Etcd_manage.etcd_set(array, state, proxy)
 
+    def logclean(self):
+        cmd = 'echo "" > %s/log/bactl.log' % (self.config.home)
+        os.system(cmd)
+        cmd = 'echo "" > %s/log/frctl.log' % (self.config.home)
+        os.system(cmd)
+        cmd = 'echo "" > %s/log/mdctl.log' % (self.config.home)
+        os.system(cmd)
+        
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter)
     subparsers = parser.add_subparsers()
@@ -1410,6 +1419,7 @@ if __name__ == "__main__":
     parser_stop.add_argument("--service", default=None, type=int, help="the id of service")
     parser_stop.set_defaults(func=_stop)
 
+    """
     def _objck(args):
         node = Node()
         node.objck(args.check)
@@ -1422,6 +1432,7 @@ if __name__ == "__main__":
         node.chunkbalance()
     parser_chkbalance = subparsers.add_parser('chunkbalance', help='chunk balance')
     parser_chkbalance.set_defaults(func=_chk_balance)
+    """
 
     def _stat(args):
         node = Node()
@@ -1442,7 +1453,7 @@ if __name__ == "__main__":
     parser_env_init = subparsers.add_parser('env_init', help='make env init')
     parser_env_init.set_defaults(func=_env_init)
 
-
+    """
     def _vip_start(args):
         node = Node()
         node._vip_start()
@@ -1500,6 +1511,7 @@ if __name__ == "__main__":
     parser_dnsdel = subparsers.add_parser('dnsdel', help='del a domain name on dns')
     parser_dnsdel.add_argument("--name", required=True, help="domain name")
     parser_dnsdel.set_defaults(func=_dns_del)
+    """
 
     def _start_service(args):
         node = Node()
@@ -1507,6 +1519,7 @@ if __name__ == "__main__":
     parser_start_srv = subparsers.add_parser('startsrv', help='start service')
     parser_start_srv.set_defaults(func=_start_service)
 
+    """
     #ucarp operation
     def _ucarp_conf(args):
         node = Node()
@@ -1584,6 +1597,7 @@ if __name__ == "__main__":
     parser_groupdel = subparsers.add_parser('groupdel', help='del a group')
     parser_groupdel.add_argument("--name", required=True, help="group name")
     parser_groupdel.set_defaults(func=_groupdel)
+    """
 
     #disk operation
     def _disk_add(args):
@@ -1597,6 +1611,7 @@ if __name__ == "__main__":
     parser_disk_add.add_argument("--force", action='store_true', help="force to do")
     parser_disk_add.set_defaults(func=_disk_add)
 
+    """
     #raid tools
     def _raidlist(args):
         node = Node()
@@ -1662,6 +1677,7 @@ if __name__ == "__main__":
         node.raidflush()
     parser_raidflush = subparsers.add_parser('raidflush', help='flush raid cache')
     parser_raidflush.set_defaults(func=_raidflush)
+    """
 
     def _etcd(args):
         config = Config(load_config=True)
@@ -1671,6 +1687,13 @@ if __name__ == "__main__":
     parser_etcd.add_argument("--state", required=True, help="new/exsting/proxy")
     parser_etcd.add_argument("--hosts", required=True, help="host1,host2")
     parser_etcd.set_defaults(func=_etcd)
+
+    def _logclean(args):
+        config = Config(load_config=True)
+        node = Node(config)
+        node.logclean()
+    parser_logclean = subparsers.add_parser('logclean', help='logclean option')
+    parser_logclean.set_defaults(func=_logclean)
     
     if (len(sys.argv) == 1):
         parser.print_help()

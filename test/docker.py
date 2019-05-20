@@ -249,7 +249,7 @@ class DockerNode():
         for i in cmd:
             docker_exec(i, self.name)
 
-    def add_disk_fs(pool):
+    def add_disk_fs(self, pool):
 
         cmd = [
             'sdfs disk add --pool %s --driver filesystem --device fake' % (pool)
@@ -261,7 +261,8 @@ class DockerNode():
     def add_disk(self, pool):
         
         for i in range(2):
-            self.add_disk_block(pool)
+            #self.add_disk_block(pool)
+            self.add_disk_fs(pool)
 
     def create(self):
         lst = ""

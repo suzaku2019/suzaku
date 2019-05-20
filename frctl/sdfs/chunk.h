@@ -53,7 +53,7 @@
 
 typedef struct {
         time_t ltime;
-        uint32_t magic;
+        uint32_t sessid;
 } repstat_t;
 
 typedef struct {
@@ -63,7 +63,7 @@ typedef struct {
 
 typedef struct {
         diskid_t diskid;
-        uint32_t magic;
+        uint32_t sessid;
 } repsess_t;
 
 typedef struct {
@@ -74,6 +74,17 @@ typedef struct {
         int repnum;
         repsess_t repsess[0];
 } io_token_t;
+
+typedef struct {
+        nid_t nid;
+        uint16_t type;
+} vfmid_t;
+
+typedef struct {
+        uint64_t clock;
+        int count;
+        vfmid_t array[0];
+} vfm_t;
 
 typedef struct __chunk__ {
         plock_t plock;
@@ -87,20 +98,8 @@ typedef struct __chunk__ {
 
         int (*read)(const io_token_t *, io_t *);
         int (*write)(const io_token_t *, io_t *);
-        int (*recovery)(struct __chunk__ *);
+        int (*recovery)(const vfm_t *vfm, struct __chunk__ *);
 } chunk_t;
-
-typedef struct {
-        nid_t nid;
-        uint16_t type;
-} vfmid_t;
-
-typedef struct {
-        uint64_t clock;
-        int count;
-        vfmid_t array[0];
-} vfm_t;
-
 
 #define IO_TOKEN_SIZE(__repnum__) (sizeof(io_token_t) + sizeof(repsess_t) * __repnum__)
 
@@ -112,9 +111,9 @@ typedef struct {
 int chunk_replica_write(const io_token_t *token, io_t *io);
 int chunk_replica_read(const io_token_t *token, io_t *io);
 
-int chunk_replica_recovery(chunk_t *chunk);
+int chunk_replica_recovery(const vfm_t *vfm, chunk_t *chunk);
 
-int chunk_recovery_sync(const chkinfo_t *chkinfo);
+int chunk_recovery_sync(const vfm_t *vfm, const chkinfo_t *chkinfo);
 
 int chunk_update(chunk_t *chunk, const chkinfo_t *chkinfo, uint64_t version);
 int chunk_write(const vfm_t *vfm, chunk_t *chunk, io_t *io);

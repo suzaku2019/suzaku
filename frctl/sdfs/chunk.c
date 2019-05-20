@@ -65,6 +65,7 @@ int chunk_open(chunk_t **_chunk, const chkinfo_t *chkinfo, uint64_t version,
                 GOTO(err_free, ret);
 
         if (chkinfo) {
+                YASSERT(chkinfo->size == SDFS_CHUNK_SPLIT);
                 chunk->chkinfo = (void *)chunk->__chkinfo__;
                 chunk->chkstat = (void *)chunk->__chkstat__;
 
@@ -150,7 +151,7 @@ static int IO_FUNC __chunk_consistent(const chkid_t *chkid, const reploc_t *repl
 
         if (likely(offline == 0 && reset == 0
                    && reploc->status == __S_CLEAN)) {
-                DBUG("chunk "CHKID_FORMAT" @ %s offline %d reset"
+                DINFO("chunk "CHKID_FORMAT" @ %s offline %d reset"
                      " %d (%lu %lu) status %d\n",
                      CHKID_ARG(chkid), network_rname(&nid),
                      offline, reset, _ltime, ltime, reploc->status);
@@ -159,14 +160,14 @@ static int IO_FUNC __chunk_consistent(const chkid_t *chkid, const reploc_t *repl
         }
 
         if (likely(reset == 0 && reploc->status == __S_DIRTY)) {
-                DBUG("chunk "CHKID_FORMAT" @ %s status %d, reset %u\n",
+                DINFO("chunk "CHKID_FORMAT" @ %s status %d, reset %u\n",
                      CHKID_ARG(chkid), network_rname(&nid),
                      reploc->status, reset);
 
                 return 1;
         }
 
-        DBUG("chunk "CHKID_FORMAT" @ %s offline %d reset"
+        DINFO("chunk "CHKID_FORMAT" @ %s offline %d reset"
              " %d (%lu %lu) status %d\n",
              CHKID_ARG(chkid), network_rname(&nid),
              offline, reset, _ltime, ltime, reploc->status);
@@ -174,13 +175,15 @@ static int IO_FUNC __chunk_consistent(const chkid_t *chkid, const reploc_t *repl
         return 0;
 }
 
-int IO_FUNC chunk_consistent(const chunk_t *chunk)
+int IO_FUNC chunk_consistent(const vfm_t *vfm, const chunk_t *chunk)
 {
         int i, consistent;
         const chkinfo_t *chkinfo = chunk->chkinfo;
         const chkstat_t *chkstat = chunk->chkstat;
 
-        DBUG("chunk "CHKID_FORMAT" check\n", CHKID_ARG(&chkinfo->chkid));
+        (void) vfm;
+        
+        DINFO("chunk "CHKID_FORMAT" check\n", CHKID_ARG(&chkinfo->chkid));
         for (i = 0; i < (int)chkinfo->repnum; i++) {
                 consistent = __chunk_consistent(&chkinfo->chkid,
                                                 &chkinfo->diskid[i],
@@ -195,13 +198,11 @@ int IO_FUNC chunk_consistent(const chunk_t *chunk)
 
 static int __chunk_replica_connect(const diskid_t *diskid, const chkid_t *chkid,
                                    const ltoken_t *token, clockstat_t *clockstat,
-                                   repstat_t *repstat, int force)
+                                   repstat_t *repstat, int resuse)
 {
         int ret;
-        uint32_t magic;
+        uint32_t sessid;
         time_t ltime;
-
-        YASSERT(force == 0 || force == 1);
 
         ANALYSIS_BEGIN(0);
 
@@ -209,14 +210,23 @@ static int __chunk_replica_connect(const diskid_t *diskid, const chkid_t *chkid,
                 ret = ENODEV;
                 GOTO(err_ret, ret);
         }
+
+        nid_t nid;
+        ret = d2n_nid(diskid, &nid);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
         
-        ret = disk_connect(diskid, &ltime, 1, 0);
+        ret = network_connect(&nid, &ltime, 1, 0);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        if (resuse) {
+                sessid = repstat->sessid;
+        } else {
+                sessid = fastrandom();
+        }
 retry:
-        magic = fastrandom();
-        ret = cds_rpc_connect(diskid, chkid, token, magic, clockstat, force);
+        ret = cds_rpc_connect(diskid, chkid, token, sessid, clockstat, resuse);
         if (unlikely(ret)) {
                 DBUG("connect chunk "CHKID_FORMAT" at %s, ret (%u) %s\n",
                      CHKID_ARG(chkid), disk_rname(diskid),
@@ -240,7 +250,7 @@ retry:
 
         YASSERT(repstat);
         repstat->ltime = ltime;
-        repstat->magic = magic;
+        repstat->sessid = sessid;
 
         ANALYSIS_QUEUE(0, IO_WARN, "chunk_connect");
 
@@ -249,90 +259,6 @@ err_ret:
         return ret;
 
 }
-
-#if 0
-STATIC int __chunk_select(const chkinfo_t *chkinfo, const ltoken_t *ltoken,
-                          clockstat_t *clockstat, repstat_t *repstat, int *_idx)
-{
-        int ret, idx, rand, found;
-        const reploc_t *reploc;
-        int force = 0;
-
-retry:
-        found = 0;
-        rand = fastrandom();
-        for (int i = 0; i < (int)chkinfo->repnum; i++) {
-                idx = (i + rand) % chkinfo->repnum;
-                reploc = &chkinfo->diskid[idx];
-                ret = __chunk_replica_connect(&reploc->id, &chkinfo->chkid,
-                                              ltoken, clockstat, repstat, 0);
-                if (unlikely(ret)) {
-                         if (ret == ENOENT || ret == EIO || ret == ENODEV) {
-                                DBUG(CHKID_FORMAT" connect %s fail\n",
-                                     CHKID_ARG(&chkinfo->chkid),
-                                     network_rname(&reploc->id));
-                                continue;
-                        } else
-                                goto err_ret;
-                }
-
-                if (force == 0 && clockstat->dirty) {
-                        continue;
-                }
-
-                found++;
-                break;
-        }
-
-        *_idx = idx;
-
-        if (unlikely(found == 0)) {
-                if(force == 0) {
-                        force = 1;
-                        goto retry;
-                }
-
-                ret = ENONET;
-#if ENABLE_CHUNK_DEBUG
-                CHKINFO_DUMP(chkinfo, D_INFO);
-#endif
-                goto err_ret;
-        }
-
-        return 0;
-err_ret:
-        return ret;
-}
-
-static int __chunk_connect__(chunk_t *chunk)
-{
-        int ret, idx;
-        clockstat_t clockstat;
-        repstat_t repstat;
-        chkstat_t *chkstat = chunk->chkstat;
-
-        ret = __chunk_select(chunk->chkinfo, chunk->ltoken, &clockstat,
-                             &repstat, &idx);
-        if (unlikely(ret)) {
-                GOTO(err_ret, ret);
-        }
-
-        chkstat->chkstat_clock = clockstat.vclock.clock;
-        chkstat->magic = fastrandom();
-        chkstat->repstat[idx] = repstat;
-
-        UNIMPLEMENTED(__DUMP__);
-#if 0
-        ret = __chunk_connect__(chunk, &clockstat, idx);
-        if (unlikely(ret))
-                GOTO(err_ret, ret);
-#endif
-        
-        return 0;
-err_ret:
-        return ret;
-}
-#endif
 
 STATIC int __chunk_connect__(chunk_t *chunk)
 {
@@ -347,13 +273,11 @@ STATIC int __chunk_connect__(chunk_t *chunk)
                 repstat_t *repstat = &chkstat->repstat[i];
 
                 int consistent = __chunk_consistent(&chkinfo->chkid, reploc,
-                                                repstat->ltime);
-                if (likely(consistent))
-                        continue;
+                                                    repstat->ltime);
 
                 ret = __chunk_replica_connect(&reploc->id, &chkinfo->chkid,
                                               &chunk->ltoken, &clockstat[i],
-                                              repstat, 0);
+                                              repstat, consistent);
                 if (unlikely(ret)) {
                         GOTO(err_ret, ret);
                 }
@@ -362,12 +286,18 @@ STATIC int __chunk_connect__(chunk_t *chunk)
                         ret = EAGAIN;
                         GOTO(err_ret, ret);
                 }
+
+                YASSERT(repstat->sessid != 0);
         }
 
         for (int i = 1; i < (int)chkinfo->repnum; i++) {
                 if (clockstat[i].vclock.vfm != clockstat[i - 1].vclock.vfm
                     || clockstat[i].vclock.clock != clockstat[i - 1].vclock.clock) {
                         ret = EAGAIN;
+                        DINFO("%ju %ju %ju %ju\n", clockstat[i].vclock.vfm,
+                              clockstat[i - 1].vclock.vfm,
+                              clockstat[i].vclock.clock,
+                              clockstat[i - 1].vclock.clock)
                         GOTO(err_ret, ret);
                 }
         }
@@ -381,31 +311,42 @@ err_ret:
 }
 
 
-static int __chunk_connect(chunk_t *chunk)
+static int __chunk_connect(const vfm_t *vfm, chunk_t *chunk)
 {
         int ret;
 
+retry:
         ret = __chunk_connect__(chunk);
         if (unlikely(ret)) {
-                ret = chunk->recovery(chunk);
+                ret = chunk->recovery(vfm, chunk);
                 if (unlikely(ret))
                         GOTO(err_ret, ret);
+
+                DINFO(CHKID_FORMAT" retry\n", CHKID_ARG(&chunk->chkinfo->chkid));
+                
+                goto retry;
         }
 
-        if (likely(chunk_consistent(chunk))) {
+        if (likely(chunk_consistent(vfm, chunk))) {
+                DINFO(CHKID_FORMAT"\n", CHKID_ARG(&chunk->chkinfo->chkid));
                 goto out;
         }
         
-        ret = chunk->recovery(chunk);
+        ret = chunk->recovery(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
+
+        ret = __chunk_connect__(chunk);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
 out:
         return 0;
 err_ret:
         return ret;
 }
 
-static int __chunk_session_check(chunk_t *chunk)
+static int __chunk_session_check(const vfm_t *vfm, chunk_t *chunk)
 {
         int ret;
 
@@ -418,7 +359,8 @@ static int __chunk_session_check(chunk_t *chunk)
                 GOTO(err_lock, ret);
         }
         
-        if (likely(chunk_consistent(chunk))) {
+        if (likely(chunk_consistent(vfm, chunk))) {
+                DINFO(CHKID_FORMAT"\n", CHKID_ARG(&chunk->chkinfo->chkid));
                 goto out;
         }
 
@@ -428,11 +370,12 @@ static int __chunk_session_check(chunk_t *chunk)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        if (likely(chunk_consistent(chunk))) {
+        if (likely(chunk_consistent(vfm, chunk))) {
+                DINFO(CHKID_FORMAT"\n", CHKID_ARG(&chunk->chkinfo->chkid));
                 goto out;
         }
 
-        ret = __chunk_connect(chunk);
+        ret = __chunk_connect(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
@@ -469,7 +412,8 @@ static int __chunk_get_token(chunk_t *chunk, int op, io_token_t *token)
 
                 token->repsess[count].diskid = reploc->id;
                 YASSERT(token->repsess[count].diskid.id);
-                token->repsess[count].magic = chkstat->repstat[i].magic;
+                token->repsess[count].sessid = chkstat->repstat[i].sessid;
+                YASSERT(token->repsess[count].sessid);
                 count++;
         }
 
@@ -495,9 +439,7 @@ int chunk_read(const vfm_t *vfm, chunk_t *chunk, io_t *io)
         io_token_t *token;
         char buf[IO_TOKEN_MAX];
 
-        (void) vfm;
-        
-        ret = __chunk_session_check(chunk);
+        ret = __chunk_session_check(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -529,9 +471,7 @@ int chunk_write(const vfm_t *vfm, chunk_t *chunk, io_t *io)
         io_token_t *token;
         char buf[IO_TOKEN_MAX];
 
-        (void) vfm;
-        
-        ret = __chunk_session_check(chunk);
+        ret = __chunk_session_check(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
         
@@ -561,9 +501,7 @@ int chunk_get_token(const vfm_t *vfm, chunk_t *chunk, int op, io_token_t *token)
 {
         int ret;
 
-        (void) vfm;
-
-        ret = __chunk_session_check(chunk);
+        ret = __chunk_session_check(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
@@ -588,9 +526,7 @@ int chunk_recovery(const vfm_t *vfm, chunk_t *chunk)
 {
         int ret;
 
-        (void) vfm;
-
-        ret = __chunk_session_check(chunk);
+        ret = __chunk_session_check(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 

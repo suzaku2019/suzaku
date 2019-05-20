@@ -46,13 +46,14 @@ static int __chunk_load__(const chkid_t *chkid,
         cid2fid(&fileid, chkid);
         fid2str(&fileid, key);
         snprintf(path, MAX_NAME_LEN, "%ju/%s/chkinfo", fileid.poolid, key);
-        DINFO("load /%s/%s\n", ETCD_TREE, path);
         ret = etcd_get_bin(ETCD_TREE, path, chkinfo, &len, &idx);
         if (unlikely(ret)) {
                 ret = (ret == ENOKEY) ? ENOENT : ret;
                 GOTO(err_ret, ret);
         }
 
+        DINFO("load /%s/%s, idx %u\n", ETCD_TREE, path, idx);
+        
         if (version)
                 *version = idx;
         
@@ -71,7 +72,7 @@ static int __chunk_update__(const chkinfo_t *chkinfo, int *idx)
         cid2fid(&fileid, chkid);
         fid2str(&fileid, key);
         snprintf(path, MAX_NAME_LEN, "%ju/%s/chkinfo", fileid.poolid, key);
-        DINFO("update /%s/%s\n", ETCD_TREE, path);
+        DINFO("update /%s/%s, idx %u\n", ETCD_TREE, path, *idx);
         ret = etcd_update(ETCD_TREE, path, chkinfo, CHKINFO_SIZE(chkinfo->repnum),
                           idx, -1);
         if (unlikely(ret)) {

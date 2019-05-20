@@ -114,11 +114,11 @@ int main(int argc, char *argv[])
         }
 
         printf("path: %s\nfileid: "FILEID_FORMAT"\nmode: %s/%s %o\nsize:"
-               " %llu\nlink: %lu\nlayout: %s\n",
+               " %llu\nsplit: %u\nlayout: %s\n",
                arg, FILEID_ARG(&fileid),
                S_ISDIR((stbuf).st_mode) ? "d" : "",
                S_ISREG((stbuf).st_mode) ? "f" : "", stbuf.st_mode & 00777,
-               (LLU)size, (unsigned long)stbuf.st_nlink, ec);
+               (LLU)size, md->split, ec);
 
         if (S_ISDIR((stbuf).st_mode)) {
                 goto out;       /* not file */

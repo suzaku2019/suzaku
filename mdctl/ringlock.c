@@ -257,7 +257,6 @@ int ringlock_locked(uint32_t type, ltoken_t *_token, int flag)
                 if (ringlock->token.master != _token->master
                     || ringlock->token.seq != _token->seq) {
                         ret = ESTALE;
-                        UNIMPLEMENTED(__DUMP__);
                         GOTO(err_ret, ret);
                 }
         }
