@@ -122,6 +122,7 @@ int disk_io_connect(const nid_t *nid, const diskid_t *diskid, const chkid_t *chk
                     clockstat_t *clockstat, int resuse);
 int disk_io_getclock(const diskid_t *diskid, const chkid_t *chkid,
                      clockstat_t *clockstat);
+int disk_io_reset(const diskid_t *diskid, const chkid_t *chkid);
 
 int disk_init(const char *home);
 int disk_statvfs(const char *home, struct statvfs *_stbuf);

@@ -276,9 +276,72 @@ int IO_FUNC disk_io_getclock(const diskid_t *diskid, const chkid_t *chkid,
         if (unlikely(ret))
                 GOTO(err_ref, ret);
 
-        DINFO("getclock "CHKID_FORMAT" @ %d clock (%ju, %ju), resuse %d\n",
+        DINFO("getclock "CHKID_FORMAT" @ disk[%d] clock (%ju, %ju)\n",
               CHKID_ARG(chkid), idx, clockstat->vclock.vfm,
               clockstat->vclock.clock);
+        
+        disk_slot_private_deref(idx);
+
+        return 0;
+err_ref:
+        disk_slot_private_deref(idx);
+err_ret:
+        return ret;
+}
+
+static int IO_FUNC __disk_io_reset__(disk_t *disk, const chkid_t *chkid)
+{
+        int ret;
+        entry_t *ent;
+
+        ret = disk_ref(disk, chkid, &ent);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = plock_wrlock(&ent->plock);
+        if (unlikely(ret))
+                GOTO(err_ref, ret);
+
+        if (ent->writing) {
+                ret = EBUSY;
+                GOTO(err_lock, ret);
+        }
+
+        memset(&ent->owner, 0x0, sizeof(ent->owner));
+        ent->sessid = -1;
+
+        plock_unlock(&ent->plock);
+        disk_deref(disk, ent);
+        
+        return 0;
+err_lock:
+        plock_unlock(&ent->plock);
+err_ref:
+        disk_deref(disk, ent);
+err_ret:
+        return ret;
+}
+
+
+int IO_FUNC disk_io_reset(const diskid_t *diskid, const chkid_t *chkid)
+{
+        int ret, idx;
+        disk_t *disk;
+        
+        ret = disk2idx(diskid, &idx);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
+
+        ret = disk_slot_private_ref(idx, &disk);
+        if (unlikely(ret))
+                GOTO(err_ref, ret);
+
+        ret = __disk_io_reset__(disk, chkid);
+        if (unlikely(ret))
+                GOTO(err_ref, ret);
+
+        DINFO("reset "CHKID_FORMAT" @ disk[%d]\n",
+              CHKID_ARG(chkid), idx);
         
         disk_slot_private_deref(idx);
 

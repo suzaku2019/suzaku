@@ -16,5 +16,6 @@ int cds_rpc_create(const diskid_t *diskid, const chkid_t *chkid, uint32_t size,
                    int initzero);
 int cds_rpc_diskstat(const diskid_t *diskid, disk_info_t *stat);
 int cds_rpc_getclock(const diskid_t *diskid, const chkid_t *chkid, clockstat_t *clockstat);
+int cds_rpc_reset(const diskid_t *diskid, const chkid_t *chkid);
 
 #endif

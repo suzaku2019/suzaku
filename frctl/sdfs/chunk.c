@@ -257,7 +257,6 @@ retry:
         return 0;
 err_ret:
         return ret;
-
 }
 
 STATIC int __chunk_connect__(chunk_t *chunk)
@@ -310,27 +309,40 @@ err_ret:
         return ret;
 }
 
-
-static int __chunk_connect(const vfm_t *vfm, chunk_t *chunk)
+STATIC int __chunk_reset(chunk_t *chunk)
 {
         int ret;
+        chkinfo_t *chkinfo = chunk->chkinfo;
+        char _chkstat[CHKSTAT_MAX];
+        chkstat_t *chkstat = (void *)_chkstat;
 
-retry:
-        ret = __chunk_connect__(chunk);
-        if (unlikely(ret)) {
-                ret = chunk->recovery(vfm, chunk);
-                if (unlikely(ret))
-                        GOTO(err_ret, ret);
-
-                DINFO(CHKID_FORMAT" retry\n", CHKID_ARG(&chunk->chkinfo->chkid));
+        for (int i = 0; i < (int)chkinfo->repnum; i++) {
+                reploc_t *reploc = &chkinfo->diskid[i];
+                repstat_t *repstat = &chkstat->repstat[i];
+                memset(repstat, 0x0, sizeof(*repstat));
                 
-                goto retry;
+                ret = cds_rpc_reset(&reploc->id, &chkinfo->chkid);
+                if (unlikely(ret))
+                        continue;
         }
+
+        chkstat->chkstat_clock = -1;
+
+        return 0;
+}
+
+static int __chunk_recovery(const vfm_t *vfm, chunk_t *chunk)
+{
+        int ret;
 
         if (likely(chunk_consistent(vfm, chunk))) {
                 DINFO(CHKID_FORMAT"\n", CHKID_ARG(&chunk->chkinfo->chkid));
                 goto out;
         }
+
+        ret = __chunk_reset(chunk);
+        if (unlikely(ret))
+                GOTO(err_ret, ret);
         
         ret = chunk->recovery(vfm, chunk);
         if (unlikely(ret))
@@ -370,12 +382,7 @@ static int __chunk_session_check(const vfm_t *vfm, chunk_t *chunk)
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
-        if (likely(chunk_consistent(vfm, chunk))) {
-                DINFO(CHKID_FORMAT"\n", CHKID_ARG(&chunk->chkinfo->chkid));
-                goto out;
-        }
-
-        ret = __chunk_connect(vfm, chunk);
+        ret = __chunk_recovery(vfm, chunk);
         if (unlikely(ret))
                 GOTO(err_lock, ret);
 
@@ -526,11 +533,19 @@ int chunk_recovery(const vfm_t *vfm, chunk_t *chunk)
 {
         int ret;
 
-        ret = __chunk_session_check(vfm, chunk);
+        ret = plock_wrlock(&chunk->plock);
         if (unlikely(ret))
                 GOTO(err_ret, ret);
 
+        ret = __chunk_recovery(vfm, chunk);
+        if (unlikely(ret))
+                GOTO(err_lock, ret);
+
+        plock_unlock(&chunk->plock);
+        
         return 0;
+err_lock:
+        plock_unlock(&chunk->plock);
 err_ret:
         return ret;
 }

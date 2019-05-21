@@ -33,8 +33,10 @@ static int __chunk_recovery__(const chkid_t *chkid)
 
 static void __chunk_recovery(const chkinfo_t *chkinfo)
 {
+#if 0
         __chunk_recovery__(&chkinfo->chkid);
         return;
+#endif
         
         for (int i = 0; i < (int)chkinfo->repnum; i++) {
                 const reploc_t *reploc = &chkinfo->diskid[i];
