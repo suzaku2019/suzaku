@@ -9,7 +9,7 @@ Dependencies:
     libuuid-devel libaio-devel flex bison python2-futurist \
     jemalloc-devel etcd yajl-devel curl-devel redis hiredis-devel \
     python-paramiko redhat-lsb expect gperftools \
-    sqlite-devel libattr libattr-devel
+    sqlite-devel libattr libattr-devel \
     openssl-devel
 
     curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py

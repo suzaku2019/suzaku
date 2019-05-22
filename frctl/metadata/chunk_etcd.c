@@ -22,7 +22,7 @@ static int __chunk_create__(const chkinfo_t *chkinfo)
 
         cid2fid(&fileid, chkid);
         fid2str(&fileid, key);
-        snprintf(path, MAX_NAME_LEN, "%ju/%s/chkinfo", fileid.poolid, key);
+        snprintf(path, MAX_NAME_LEN, "%ju/%s/%s", fileid.poolid, key, MD_CHKINFO);
         DINFO("create /%s/%s\n", ETCD_TREE, path);
         ret = etcd_create(ETCD_TREE, path, chkinfo, CHKINFO_SIZE(chkinfo->repnum), -1);
         if (unlikely(ret)) {

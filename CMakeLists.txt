@@ -185,8 +185,6 @@ add_library(sdfs SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/range_rpc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_chunk.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/frctl/sdfs/sdfs_chunk_recovery.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_dir.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/frctl/metadata/md_node.c
